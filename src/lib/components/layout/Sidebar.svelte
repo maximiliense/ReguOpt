@@ -43,8 +43,8 @@
 	{#if !collapsed}
 		<div class="sidebar-logo">
 			<a href={resolve('/')} class="logo-link">
-				<span class="logo-icon">F</span>
-				<span class="logo-text">FEP Interactif</span>
+				<span class="logo-icon">R</span>
+				<span class="logo-text">Régularisation & Optimisation</span>
 			</a>
 			<button
 				class="collapse-btn"

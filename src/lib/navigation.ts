@@ -15,11 +15,22 @@ const RAW_PAGES = [
 	{ path: '/', title: 'Accueil', part: null },
 	{ path: '/intro', title: 'Introduction', part: null },
 
-	// Partie I
-	{ path: '/part1/lesson1', title: 'Leçon 1', part: 1 },
+	// Partie I — Optimisation
+	{ path: '/part1/lesson1', title: "Conditions d'un minimum", part: 1 },
+	{ path: '/part1/lesson2', title: "Fonctions d'optimisation en ML", part: 1 },
+	{ path: '/part1/lesson3', title: 'Descente de gradient & accélération', part: 1 },
+	{ path: '/part1/lesson4', title: 'SGD, CD & Newton', part: 1 },
 
-	// Partie II
-	{ path: '/part2/lesson1', title: 'Leçon 1', part: 2 }
+	// Partie II — Régularisation
+	{ path: '/part2/lesson1', title: 'Méthodes ensemblistes et Bagging', part: 2 },
+	{ path: '/part2/lesson2', title: 'Random Forest & sélection de features', part: 2 },
+	{ path: '/part2/lesson3', title: 'Boosting (AdaBoost, Gradient Boosting)', part: 2 },
+	{ path: '/part2/lesson4', title: 'Régularisation L1/L2/Elastic Net', part: 2 },
+
+	// Partie III — Prédiction d'ensembles
+	{ path: '/part3/lesson1', title: 'Classification Top-K', part: 3 },
+	{ path: '/part3/lesson2', title: 'Prédiction conformelle', part: 3 },
+	{ path: '/part3/lesson3', title: 'Intervalles de prédiction', part: 3 }
 ] as const;
 
 // 2. Hydrate indices and inject runtime resolved path property
@@ -32,8 +43,9 @@ export const PAGES: PageMeta[] = RAW_PAGES.map((page, idx) => ({
 }));
 
 export const PART_NAMES: Record<number, string> = {
-	1: 'Partie I',
-	2: 'Partie II'
+	1: 'Partie I — Optimisation',
+	2: 'Partie II — Régularisation',
+	3: "Partie III — Prédiction d'ensembles"
 };
 
 export function getPageByPath(path: string): PageMeta | undefined {

@@ -1,0 +1,62 @@
+<script lang="ts">
+	import type { Snippet } from 'svelte';
+
+	interface Props {
+		number?: string;
+		title?: string;
+		children: Snippet;
+	}
+
+	let { number, title = 'Définition', children }: Props = $props();
+
+	const label = $derived(number ? `${title} ${number}` : title);
+</script>
+
+<aside class="definition-block">
+	<div class="block-header">
+		<span class="block-icon" aria-hidden="true">📖</span>
+		<span class="block-title">{label}</span>
+	</div>
+	<div class="block-body">
+		{@render children()}
+	</div>
+</aside>
+
+<style>
+	.definition-block {
+		border-left: 3px solid rgba(167, 139, 250, 0.4);
+		background: rgba(167, 139, 250, 0.06);
+		border-radius: 0 var(--radius-md) var(--radius-md) 0;
+		padding: 1rem 1.25rem;
+		margin-top: 1em;
+	}
+
+	.block-header {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-bottom: 0.6rem;
+	}
+
+	.block-icon {
+		font-size: 1rem;
+		line-height: 1;
+	}
+
+	.block-title {
+		font-size: 0.875rem;
+		font-weight: 700;
+		color: var(--color-epistemic);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+
+	.block-body {
+		font-size: 0.9375rem;
+		line-height: 1.6;
+	}
+
+	.block-body :global(p:last-child) {
+		margin-bottom: 0;
+	}
+</style>
