@@ -1,0 +1,549 @@
+<script lang="ts">
+	import { scaleLinear, line, curveBasis } from 'd3';
+	import type { Snippet } from 'svelte';
+
+	// ─── Curve layer ──────────────────────────────────────────────────────────────
+
+	/**
+	 * A single density curve rendered in the chart.
+	 * Pre-computed points are passed in; the component handles scaling + path gen.
+	 */
+	interface CurveLayer {
+		/** Array of [x, y] data points (y ≥ 0). */
+		points: [number, number][];
+		/** Stroke color. Defaults to var(--color-text-muted). */
+		stroke?: string;
+		/** px stroke width. Default 2. */
+		strokeWidth?: number;
+		/** SVG stroke-dasharray, e.g. "6 4". Default solid. */
+		strokeDasharray?: string;
+		/** stroke-linejoin. Default "round". */
+		strokeLinejoin?: 'round' | 'miter' | 'bevel' | 'arcs' | 'miter-clip' | 'inherit';
+		/** Opacity of the stroke. Default 1. */
+		opacity?: number;
+		/** Fill color below the curve. Omit or set to "none" for no fill. */
+		fill?: string;
+		/** Opacity of the fill. Default 0.1. */
+		fillOpacity?: number;
+	}
+
+	// ─── Annotation layers ────────────────────────────────────────────────────────
+
+	/** A vertical dashed/solid guide line at a data-space x value. */
+	interface VLine {
+		x: number;
+		stroke?: string;
+		strokeWidth?: number;
+		strokeDasharray?: string;
+		opacity?: number;
+		/** Label rendered just above the top of the line. Omit for no label. */
+		label?: string;
+		/** Vertical offset from pad.top for the label. Default -2. */
+		labelOffset?: number;
+		labelFontSize?: number;
+		labelOpacity?: number;
+		labelFontFamily?: string;
+	}
+
+	/** A dot placed at (x, y=baseline). Typical use: observed value marker. */
+	interface Dot {
+		x: number;
+		/** Radius in SVG units. Default 4. */
+		r?: number;
+		fill?: string;
+		stroke?: string;
+		strokeWidth?: number;
+	}
+
+	/** A dot + vertical line pair, optionally labeled above the line. */
+	interface ObservationMarker {
+		x: number;
+		/** Line stroke. Default var(--color-positive). */
+		stroke?: string;
+		strokeWidth?: number;
+		strokeDasharray?: string;
+		lineOpacity?: number;
+		/** Dot fill. Defaults to same as stroke. */
+		dotFill?: string;
+		dotR?: number;
+		/** Label rendered just above the top of the line. Omit for no label. */
+		label?: string;
+		/** Vertical offset from pad.top for the label. Default -2. */
+		labelOffset?: number;
+		labelFontSize?: number;
+		labelOpacity?: number;
+		labelFontFamily?: string;
+	}
+
+	// ─── Fill-between layer ───────────────────────────────────────────────────────
+
+	/**
+	 * Fills the vertical gap between two curves (identified by index into `curves`).
+	 * The region is the area where one curve is above the other, pointwise.
+	 * Renders below all curve strokes.
+	 */
+	interface FillBetween {
+		/** Index of the first curve in `curves`. */
+		curveA: number;
+		/** Index of the second curve in `curves`. */
+		curveB: number;
+		fill?: string;
+		opacity?: number;
+	}
+
+	// ─── Curve dot ────────────────────────────────────────────────────────────────
+
+	/**
+	 * A dot placed at (x, y) in data space — i.e. on the curve itself, not the baseline.
+	 * Optionally draws a vertical bar from the dot down to the baseline (for likelihood
+	 * needle / surprise visualisations).
+	 */
+	interface CurveDot {
+		/** Data-space x position. */
+		x: number;
+		/** Data-space y position (e.g. pdf(x)). */
+		y: number;
+		r?: number;
+		fill?: string;
+		stroke?: string;
+		strokeWidth?: number;
+		/** Draw a vertical bar from this dot down to the baseline. */
+		bar?: boolean;
+		barFill?: string;
+		barOpacity?: number;
+		/** Bar width in SVG px. Default 2. */
+		barWidth?: number;
+	}
+
+	// ─── Legend ───────────────────────────────────────────────────────────────────
+
+	interface LegendItem {
+		label: string;
+		/** Swatch color. */
+		color: string;
+		/** 'line' (default) | 'dashed-line' | 'fill'. */
+		kind?: 'line' | 'dashed-line' | 'fill';
+	}
+
+	// ─── Props ────────────────────────────────────────────────────────────────────
+
+	interface Props {
+		/** Density curves. Rendered back-to-front (fills first, then strokes). */
+		curves: CurveLayer[];
+		/**
+		 * Explicit x domain [min, max].
+		 * If omitted the domain is inferred from curves[].points.
+		 */
+		xDomain?: [number, number];
+		/**
+		 * Explicit y domain maximum.
+		 * If omitted the global peak of all curves × 1.1 is used.
+		 */
+		yMax?: number;
+		/** Chart height in CSS px. Default 200. */
+		height?: number;
+		/** How many x-axis ticks to aim for. Default 5. */
+		nTicks?: number;
+		/** How many y-axis ticks to aim for. Default 3. */
+		nYTicks?: number;
+		/** Show Y axis. */
+		yAxis?: boolean;
+		/** Vertical guide lines (purely aesthetic grids or semantic markers). */
+		vlines?: VLine[];
+		/** Dot+line "observation" composite annotations. */
+		observations?: ObservationMarker[];
+		/** Standalone dots on the baseline. */
+		dots?: Dot[];
+		/** Fill the gap between two curves (by index). Rendered below strokes. */
+		fillBetween?: FillBetween[];
+		/** Dots placed at arbitrary (x, y) in data space, with optional baseline bar. */
+		curveDots?: CurveDot[];
+		/** Short label rendered top-right inside the SVG (e.g. "Prédiction p(o)"). */
+		chartLabel?: string;
+		/** Legend items rendered below the chart. */
+		legend?: LegendItem[];
+		/** For customizable elements */
+		children?: Snippet;
+	}
+
+	let {
+		curves,
+		xDomain,
+		yMax,
+		height = 200,
+		nTicks = 5,
+		nYTicks = 3,
+		yAxis = false,
+		vlines = [],
+		observations = [],
+		dots = [],
+		fillBetween = [],
+		curveDots = [],
+		chartLabel,
+		legend = [],
+		children
+	}: Props = $props();
+
+	// ─── Layout ───────────────────────────────────────────────────────────────────
+
+	let containerWidth = $state(0);
+
+	const pad = { top: 15, right: 20, bottom: 35, left: 20 };
+
+	const vbW = $derived(containerWidth || 560);
+	const vbH = $derived(height);
+	const baseline = $derived(vbH - pad.bottom);
+
+	// ─── Scales ───────────────────────────────────────────────────────────────────
+
+	const computedXDomain = $derived.by((): [number, number] => {
+		if (xDomain) return xDomain;
+		const allX = curves.flatMap((c) => c.points.map((p) => p[0]));
+		if (allX.length === 0) return [-4, 4];
+		return [Math.min(...allX), Math.max(...allX)];
+	});
+
+	const computedYMax = $derived.by(() => {
+		if (yMax !== undefined) return yMax;
+		const allY = curves.flatMap((c) => c.points.map((p) => p[1]));
+		return allY.length > 0 ? Math.max(...allY) * 1.1 : 1;
+	});
+
+	const xScale = $derived(
+		scaleLinear<number>()
+			.domain(computedXDomain)
+			.range([pad.left, Math.max(pad.left, vbW - pad.right)])
+	);
+
+	const yScale = $derived(
+		scaleLinear<number>().domain([0, computedYMax]).range([baseline, pad.top])
+	);
+
+	// ─── Path generation ─────────────────────────────────────────────────────────
+
+	type Pt = { x: number; y: number };
+
+	const makeLine = (xs: typeof xScale, ys: typeof yScale) =>
+		line<Pt>()
+			.x((d) => xs(d.x))
+			.y((d) => ys(d.y))
+			.curve(curveBasis);
+
+	const computedPaths = $derived.by(() => {
+		if (!containerWidth) return [];
+
+		const [x0, x1] = computedXDomain;
+
+		return curves.map((c) => {
+			const pts: Pt[] = c.points.map(([x, y]) => ({ x, y }));
+			const curvePath = makeLine(xScale, yScale)(pts) ?? '';
+
+			// Fill path: close down to baseline
+			const fillPts: Pt[] = [{ x: x0, y: 0 }, ...pts, { x: x1, y: 0 }];
+			const fillPath = makeLine(xScale, yScale)(fillPts) ?? '';
+
+			return { curvePath, fillPath, layer: c };
+		});
+	});
+
+	const ticks = $derived(xScale.ticks(nTicks));
+	const yTicks = $derived(yScale.ticks(nYTicks));
+
+	// ─── Fill-between paths ───────────────────────────────────────────────────────
+
+	const computedFillBetween = $derived.by(() => {
+		if (!containerWidth || fillBetween.length === 0) return [];
+
+		return fillBetween.map((fb) => {
+			const a = curves[fb.curveA]?.points ?? [];
+			const b = curves[fb.curveB]?.points ?? [];
+			// Assume both curves share the same x grid (same xs array).
+			// Build a polygon: top edge = max(a,b), bottom edge = min(a,b), reversed.
+			const n = Math.min(a.length, b.length);
+			if (n === 0) return { d: '', fb };
+
+			// Forward pass: upper envelope
+			const upper: Pt[] = [];
+			const lower: Pt[] = [];
+			for (let i = 0; i < n; i++) {
+				const x = a[i][0];
+				const ya = a[i][1];
+				const yb = b[i][1];
+				upper.push({ x, y: Math.max(ya, yb) });
+				lower.push({ x, y: Math.min(ya, yb) });
+			}
+
+			// Path: upper forward, lower reversed → closed polygon
+			const upperPath = upper
+				.map((p, i) => `${i === 0 ? 'M' : 'L'}${xScale(p.x).toFixed(2)} ${yScale(p.y).toFixed(2)}`)
+				.join(' ');
+			const lowerPath = [...lower]
+				.reverse()
+				.map((p) => `L${xScale(p.x).toFixed(2)} ${yScale(p.y).toFixed(2)}`)
+				.join(' ');
+
+			return { d: `${upperPath} ${lowerPath} Z`, fb };
+		});
+	});
+</script>
+
+<div class="chart-wrapper" bind:clientWidth={containerWidth}>
+	{#if containerWidth > 0}
+		<svg
+			viewBox={`0 0 ${vbW} ${vbH}`}
+			width="100%"
+			height={vbH}
+			role="img"
+			aria-label="Density chart"
+		>
+			<!-- ① Fills (rendered first so strokes appear on top) -->
+			{#each computedPaths as p}
+				{#if p.layer.fill && p.layer.fill !== 'none'}
+					<path d={p.fillPath} fill={p.layer.fill} opacity={p.layer.fillOpacity ?? 0.1} />
+				{/if}
+			{/each}
+
+			<!-- ② Fill-between regions -->
+			{#each computedFillBetween as fb}
+				<path
+					d={fb.d}
+					fill={fb.fb.fill ?? 'var(--color-surprise)'}
+					opacity={fb.fb.opacity ?? 0.12}
+				/>
+			{/each}
+
+			<!-- ③ Vertical lines (behind curves, in front of fills) -->
+			{#each vlines as vl}
+				{@const stroke = vl.stroke ?? 'var(--color-border)'}
+				<line
+					x1={xScale(vl.x)}
+					y1={pad.top}
+					x2={xScale(vl.x)}
+					y2={baseline}
+					{stroke}
+					stroke-width={vl.strokeWidth ?? 1}
+					stroke-dasharray={vl.strokeDasharray ?? '2 2'}
+					opacity={vl.opacity ?? 0.3}
+				/>
+				{#if vl.label}
+					<text
+						x={xScale(vl.x)}
+						y={pad.top + (vl.labelOffset ?? -2)}
+						text-anchor="middle"
+						fill={stroke}
+						font-size={vl.labelFontSize ?? 9}
+						font-family={vl.labelFontFamily ?? 'var(--font-sans)'}
+						opacity={vl.labelOpacity ?? 0.8}>{vl.label}</text
+					>
+				{/if}
+			{/each}
+
+			<!-- ③ Curves -->
+			{#each computedPaths as p}
+				<path
+					d={p.curvePath}
+					fill="none"
+					stroke={p.layer.stroke ?? 'var(--color-text-muted)'}
+					stroke-width={p.layer.strokeWidth ?? 2}
+					stroke-dasharray={p.layer.strokeDasharray ?? undefined}
+					stroke-linejoin={p.layer.strokeLinejoin ?? 'round'}
+					opacity={p.layer.opacity ?? 1}
+				/>
+			{/each}
+
+			<!-- ④ Observation markers (line + optional label + optional dot) -->
+			{#each observations as obs}
+				{@const stroke = obs.stroke ?? 'var(--color-positive)'}
+				<line
+					x1={xScale(obs.x)}
+					y1={pad.top}
+					x2={xScale(obs.x)}
+					y2={baseline}
+					{stroke}
+					stroke-width={obs.strokeWidth ?? 1}
+					stroke-dasharray={obs.strokeDasharray ?? '4 3'}
+					opacity={obs.lineOpacity ?? 0.6}
+				/>
+				{#if obs.label}
+					<text
+						x={xScale(obs.x)}
+						y={pad.top + (obs.labelOffset ?? -2)}
+						text-anchor="middle"
+						fill={stroke}
+						font-size={obs.labelFontSize ?? 9}
+						font-family={obs.labelFontFamily ?? 'var(--font-sans)'}
+						opacity={obs.labelOpacity ?? 0.8}>{obs.label}</text
+					>
+				{/if}
+				{#if obs.dotR !== 0}
+					<circle cx={xScale(obs.x)} cy={baseline} r={obs.dotR ?? 4} fill={obs.dotFill ?? stroke} />
+				{/if}
+			{/each}
+
+			<!-- ⑤ Standalone dots on baseline -->
+			{#each dots as dot}
+				<circle
+					cx={xScale(dot.x)}
+					cy={baseline}
+					r={dot.r ?? 4}
+					fill={dot.fill ?? 'var(--color-positive)'}
+					stroke={dot.stroke ?? 'none'}
+					stroke-width={dot.strokeWidth ?? 0}
+				/>
+			{/each}
+
+			<!-- ⑥ Curve dots (data-space y, optional baseline bar) -->
+			{#each curveDots as cd}
+				{@const cx = xScale(cd.x)}
+				{@const cy = Math.max(pad.top + 2, Math.min(baseline - 2, yScale(cd.y)))}
+				{#if cd.bar}
+					<rect
+						x={cx - (cd.barWidth ?? 2) / 2}
+						y={cy}
+						width={cd.barWidth ?? 2}
+						height={baseline - cy}
+						fill={cd.barFill ?? cd.fill ?? 'var(--color-surprise)'}
+						opacity={cd.barOpacity ?? 0.15}
+					/>
+				{/if}
+				<circle
+					{cx}
+					{cy}
+					r={cd.r ?? 5.5}
+					fill={cd.fill ?? 'var(--color-surprise)'}
+					stroke={cd.stroke ?? 'var(--color-bg)'}
+					stroke-width={cd.strokeWidth ?? 2}
+				/>
+			{/each}
+
+			<!-- ⑧ X, Y axis -->
+			<line
+				x1={pad.left}
+				y1={baseline}
+				x2={vbW - pad.right}
+				y2={baseline}
+				stroke="var(--color-border)"
+				stroke-width="1.5"
+			/>
+			{#each ticks as tick (tick)}
+				<text
+					x={xScale(tick).toFixed(2)}
+					y={baseline + 16}
+					text-anchor="middle"
+					fill="var(--color-text-muted)"
+					font-size="10.5"
+					font-family="var(--font-mono)">{tick}</text
+				>
+			{/each}
+			{#if yAxis}
+				<line
+					x1={pad.left}
+					y1={baseline}
+					x2={pad.left}
+					y2={pad.top}
+					stroke="var(--color-border)"
+					stroke-width="1.5"
+				/>
+				{#each yTicks as tick (tick)}
+					<text
+						x={pad.left - 16}
+						y={yScale(tick).toFixed(2)}
+						text-anchor="middle"
+						fill="var(--color-text-muted)"
+						font-size="10.5"
+						font-family="var(--font-mono)">{tick}</text
+					>
+				{/each}
+			{/if}
+
+			<!-- ⑨ Chart label (top-right) -->
+			{#if chartLabel}
+				<text
+					x={vbW - pad.right}
+					y={pad.top + 10}
+					text-anchor="end"
+					fill="var(--color-text-muted)"
+					font-size="11"
+					font-family="var(--font-sans)">{chartLabel}</text
+				>
+			{/if}
+			{#if children}
+				{@render children()}
+			{/if}
+		</svg>
+
+		<!-- ⑦ Legend -->
+		{#if legend.length > 0}
+			<div class="chart-legend">
+				{#each legend as item}
+					<span class="legend-item">
+						{#if item.kind === 'fill'}
+							<span class="legend-swatch legend-fill" style:background={item.color}></span>
+						{:else if item.kind === 'dashed-line'}
+							<span class="legend-swatch legend-dash" style:border-color={item.color}></span>
+						{:else}
+							<span class="legend-swatch legend-line" style:background={item.color}></span>
+						{/if}
+						{item.label}
+					</span>
+				{/each}
+			</div>
+		{/if}
+	{/if}
+</div>
+
+<style>
+	.chart-wrapper {
+		width: 100%;
+	}
+
+	svg {
+		display: block;
+		overflow: visible;
+	}
+
+	.chart-legend {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.25rem 1rem;
+		justify-content: center;
+		margin-top: 0.5rem;
+		font-size: 0.8rem;
+		font-family: var(--font-sans);
+		color: var(--color-text-muted);
+	}
+
+	.legend-item {
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
+	}
+
+	.legend-swatch {
+		display: inline-block;
+		width: 18px;
+		height: 3px;
+		border-radius: 2px;
+		flex-shrink: 0;
+	}
+
+	/* Solid line swatch */
+	.legend-line {
+		height: 3px;
+	}
+
+	/* Dashed line swatch */
+	.legend-dash {
+		height: 0;
+		border-top: 2px dashed;
+		background: transparent;
+	}
+
+	/* Fill swatch (small square) */
+	.legend-fill {
+		height: 10px;
+		width: 14px;
+		opacity: 0.4;
+		border-radius: 2px;
+	}
+</style>

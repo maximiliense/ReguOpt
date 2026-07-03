@@ -1,0 +1,56 @@
+# ── Dependencies ──────────────────────────────────────
+node_modules/
+package-lock.json
+
+# ── SvelteKit / Vite build outputs ────────────────────
+.svelte-kit/
+build/
+dist/
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# ── WASM / Rust ───────────────────────────────────────
+target/
+/static/pkg/
+
+# ── Environment variables ─────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── TypeScript ────────────────────────────────────────
+*.tsbuildinfo
+
+# ── Test coverage ─────────────────────────────────────
+coverage/
+.nyc_output/
+
+# ── Logs ──────────────────────────────────────────────
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── Archives ──────────────────────────────────────────
+*.tar.gz
+*.zip
+*.rar
+
+# ── OS files ──────────────────────────────────────────
+.DS_Store
+**/.DS_Store
+Thumbs.db
+
+# ── Editor & IDE ──────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── misc ──────────────────────────────────────
+old/
+skills
+/md
+/_*

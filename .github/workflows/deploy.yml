@@ -1,0 +1,50 @@
+name: Build & Deploy
+
+on:
+  push:
+    branches: [main]
+
+env:
+  BASE_PATH: /fep
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # required for peaceiris/actions-gh-pages to push to gh-pages branch
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Node / SvelteKit ──────────────────────────────────────
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        run: pnpm check
+
+      - name: Run unit tests
+        run: pnpm test:unit
+
+      - name: Build SvelteKit
+        run: pnpm build
+        env:
+          NODE_ENV: production
+
+      # ── Deploy ───────────────────────────────────────────────
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./build
