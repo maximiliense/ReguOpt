@@ -5,7 +5,7 @@ on:
     branches: [main]
 
 env:
-  BASE_PATH: /fep
+  BASE_PATH: /ReguOpt
 
 jobs:
   build-and-deploy:
