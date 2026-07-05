@@ -17,7 +17,7 @@
 	const xDomain: [number, number] = [-4, 4];
 	const N = 300;
 
-	// f1(x) = exp(alpha1 * x^2 / 2)  — always convex
+	// f1(x) = exp((alpha1 * x^2 + offset1) / 2) — always convex
 	function f1(x: number): number {
 		return Math.exp((alpha1 * x * x + offset1) / 2);
 	}
@@ -47,28 +47,34 @@
 		})
 	);
 
-	// Chord between two points on sum curve — always above the curve for convex functions
+	// Chord endpoints — sliders can overlap in range, so we don't assume chordA < chordB.
 	let chordA = $state(-1.5);
 	let chordB = $state(1.5);
-
-	const yMax = $derived.by(() => {
-		const vals = curveSum.map(([, v]) => v);
-		return Math.ceil((Math.max(...vals) * 1.1) / 10) * 10;
-	});
 
 	function lerp(a: number, b: number, t: number): number {
 		return a + (b - a) * t;
 	}
 
-	const chordPoints = $derived(
-		Array.from({ length: N }, (_, i) => {
-			const x = xDomain[0] + (xDomain[1] - xDomain[0]) * (i / (N - 1));
-			if (x < chordA || x > chordB) return [x, NaN] as [number, number];
-			const t = (x - chordA) / (chordB - chordA);
-			const yA = f1(chordA) + f2(chordA);
-			const yB = f1(chordB) + f2(chordB);
-			return [x, lerp(yA, yB, t)] as [number, number];
-		})
+	// Build the chord as its OWN short point list spanning only [lo, hi] — no NaN
+	// placeholders, so the path string DensityChart builds is always fully valid.
+	const chordPoints = $derived.by(() => {
+		const lo = Math.min(chordA, chordB);
+		const hi = Math.max(chordA, chordB);
+		const steps = 40;
+		const yLo = f1(lo) + f2(lo);
+		const yHi = f1(hi) + f2(hi);
+		return Array.from({ length: steps + 1 }, (_, i) => {
+			const t = i / steps;
+			return [lerp(lo, hi, t), lerp(yLo, yHi, t)] as [number, number];
+		});
+	});
+
+	const yMax = $derived(
+		Math.max(
+			...curveA.map(([, v]) => v),
+			...curveB.map(([, v]) => v),
+			...curveSum.map(([, v]) => v)
+		) * 1.05
 	);
 
 	const curves = $derived([
@@ -78,10 +84,21 @@
 		{ points: chordPoints, stroke: '#ef4444', strokeWidth: 2, strokeDasharray: '6 3' }
 	]);
 
+	// Legend/slider labels: real unicode characters passed as JS expressions
+	// (curly-brace attributes), not backslash-escape sequences inside plain
+	// quoted attributes — the latter never gets interpreted by Svelte and
+	// renders literally as "\u03b1₁" etc.
+	const labelF1 = 'f\u2081(x)'; // f₁(x)
+	const labelF2 = 'f\u2082(x)'; // f₂(x)
+	const labelSum = 'f\u2081 + f\u2082'; // f₁ + f₂
+	const labelAlpha1 = '\u03b1\u2081'; // α₁
+	const labelAlpha2 = '\u03b1\u2082'; // α₂
+	const labelOffset2 = 'décalage f\u2082'; // décalage f₂
+
 	const legend = $derived([
-		{ label: String.raw`f₁(x)`, color: '#8b5cf6', kind: 'line' as const },
-		{ label: String.raw`f₂(x)`, color: '#f97316', kind: 'line' as const },
-		{ label: String.raw`f₁ + f₂`, color: '#3b82f6', kind: 'line' as const },
+		{ label: labelF1, color: '#8b5cf6', kind: 'line' as const },
+		{ label: labelF2, color: '#f97316', kind: 'line' as const },
+		{ label: labelSum, color: '#3b82f6', kind: 'line' as const },
 		{ label: 'Cordes (convexité)', color: '#ef4444', kind: 'dashed-line' as const }
 	]);
 </script>
@@ -99,9 +116,9 @@
 		</div>
 		<div class="group">
 			<div class="group-title">Formes des fonctions</div>
-			<Slider bind:value={alpha1} min={0.1} max={2} step={0.05} label="\u03b1₁" />
-			<Slider bind:value={alpha2} min={0.1} max={2} step={0.05} label="\u03b1₂" />
-			<Slider bind:value={offset2} min={-4} max={4} step={0.1} label="décalage f₂" />
+			<Slider bind:value={alpha1} min={0.1} max={2} step={0.05} label={labelAlpha1} />
+			<Slider bind:value={alpha2} min={0.1} max={2} step={0.05} label={labelAlpha2} />
+			<Slider bind:value={offset2} min={-4} max={4} step={0.1} label={labelOffset2} />
 		</div>
 	</SliderGrid>
 

@@ -4,6 +4,7 @@
 	import ExercisePanel from '$lib/components/narrative/ExercisePanel.svelte';
 	import KatexInline from '$lib/components/narrative/KatexInline.svelte';
 	import { getPageByPath, getNextPage, getPrevPage } from '$lib/navigation.js';
+	import KatexBlock from '$lib/components/narrative/KatexBlock.svelte';
 
 	const meta = getPageByPath('/part1/exercises1');
 	const prevMeta = $derived(getPrevPage(meta?.index ?? 0));
@@ -545,6 +546,265 @@
 				Soit <KatexInline formula={f220} />. Montrez qu'elle admet une infinité de minima globaux,
 				et expliquez en quoi cela ne contredit pas le résultat de l'exercice 2.11.
 			</p>
+		</ExercisePanel>
+		<h2>Fonctions en ML</h2>
+
+		<ExercisePanel number="2.5" title="Convexité d'une combinaison linéaire">
+			<p>
+				Soient <KatexInline formula="f_1,f_2" /> deux fonctions convexes sur
+				<KatexInline formula="\Omega" />. Soient
+				<KatexInline formula="\alpha,\beta \ge 0" />.
+			</p>
+
+			<ol>
+				<li>
+					Montrer que
+					<KatexInline formula="g(x)=\alpha f_1(x)+\beta f_2(x)" />
+					est convexe.
+				</li>
+				<li>
+					Que se passe-t-il si
+					<KatexInline formula="\alpha&lt;0" /> ?
+				</li>
+			</ol>
+
+			{#snippet solution()}
+				<p>
+					Pour tout
+					<KatexInline formula="x,y\in\Omega" />
+					et
+					<KatexInline formula="\lambda\in[0,1]" />, la convexité de
+					<KatexInline formula="f_1" />
+					et
+					<KatexInline formula="f_2" />
+					donne :
+				</p>
+
+				<KatexBlock
+					formula={String.raw`\begin{aligned}
+g(\lambda x+(1-\lambda)y)
+&=\alpha f_1(\lambda x+(1-\lambda)y)+\beta f_2(\lambda x+(1-\lambda)y)\\
+&\le
+\alpha[\lambda f_1(x)+(1-\lambda)f_1(y)]\\
+&\qquad+\beta[\lambda f_2(x)+(1-\lambda)f_2(y)]\\
+&=\lambda g(x)+(1-\lambda)g(y).
+\end{aligned}`}
+				/>
+
+				<p>
+					Donc
+					<KatexInline formula="g" />
+					est convexe. En revanche, si un coefficient est négatif, la preuve ne fonctionne plus : une
+					combinaison avec coefficient négatif peut devenir non convexe.
+				</p>
+			{/snippet}
+		</ExercisePanel>
+
+		<ExercisePanel number="2.6" title="Convexité d'une moyenne empirique">
+			<p>
+				Soient
+				<KatexInline formula="n" />
+				fonctions convexes
+				<KatexInline formula="f_i" />. On définit
+			</p>
+
+			<KatexBlock formula={String.raw`F(x)=\frac1n\sum_{i=1}^n f_i(x).`} />
+
+			<ol>
+				<li>Montrer que <KatexInline formula="F" /> est convexe.</li>
+				<li>Pourquoi cette propriété est-elle essentielle en apprentissage automatique ?</li>
+			</ol>
+
+			{#snippet solution()}
+				<p>
+					La moyenne est une combinaison convexe des fonctions
+					<KatexInline formula="f_i" />, car tous les coefficients valent
+					<KatexInline formula="1/n" />
+					et sont positifs.
+				</p>
+
+				<KatexBlock
+					formula="F(\lambda x+(1-\lambda)y)
+=\frac1n\sum_i f_i(\lambda x+(1-\lambda)y)
+\le
+\lambda F(x)+(1-\lambda)F(y)."
+				/>
+
+				<p>
+					Ainsi
+					<KatexInline formula="F" />
+					est convexe. En Machine Learning, cela garantit que la fonction de perte globale hérite de la
+					convexité des pertes individuelles.
+				</p>
+			{/snippet}
+		</ExercisePanel>
+
+		<ExercisePanel number="2.7" title="Gradient d'une somme">
+			<p>
+				Soient deux fonctions différentiables
+				<KatexInline formula="f,g:\mathbb R^d\rightarrow\mathbb R" />.
+			</p>
+
+			<ol>
+				<li>
+					Calculer
+					<KatexInline formula="\nabla(f+g)" />.
+				</li>
+				<li>
+					En déduire le gradient de
+					<KatexInline formula="\frac1n\sum_i f_i" />.
+				</li>
+			</ol>
+
+			{#snippet solution()}
+				<p>La dérivation est linéaire :</p>
+
+				<KatexBlock formula="\nabla(f+g)=\nabla f+\nabla g." />
+
+				<p>En appliquant cette propriété terme à terme :</p>
+
+				<KatexBlock
+					formula={String.raw`\nabla\!\left(\frac1n\sum_{i=1}^n f_i\right)=\frac1n\sum_{i=1}^n\nabla f_i.`}
+				/>
+
+				<p>
+					Cette formule est utilisée directement dans tous les algorithmes de descente de gradient.
+				</p>
+			{/snippet}
+		</ExercisePanel>
+
+		<ExercisePanel number="2.8" title="Hessienne d'une somme quadratique">
+			<p>
+				Soit
+				<KatexInline formula={String.raw`f(x)=x^\top Ax+x^\top Bx`} />, où
+				<KatexInline formula={String.raw`A,B`} />
+				sont deux matrices symétriques.
+			</p>
+
+			<ol>
+				<li>Calculer la Hessienne de <KatexInline formula={String.raw`f`} />.</li>
+				<li>
+					À quelle condition
+					<KatexInline formula={String.raw`f`} />
+					est-elle convexe ?
+				</li>
+			</ol>
+
+			{#snippet solution()}
+				<p>On sait que</p>
+
+				<KatexBlock formula={String.raw`H_{x^\top Ax}=2A,\qquad H_{x^\top Bx}=2B.`} />
+
+				<p>Donc</p>
+
+				<KatexBlock formula={String.raw`H_f=2(A+B).`} />
+
+				<p>
+					La fonction est convexe si et seulement si
+					<KatexInline formula={String.raw`A+B`} />
+					est semi-définie positive.
+				</p>
+			{/snippet}
+		</ExercisePanel>
+
+		<ExercisePanel number="2.9" title="Composition affine">
+			<p>
+				Soit
+				<KatexInline formula={String.raw`g(t)=t^2`} />
+				et
+				<KatexInline formula={String.raw`A(x)=Mx+b`} />.
+			</p>
+
+			<ol>
+				<li>
+					Écrire la fonction composée
+					<KatexInline formula={String.raw`f=g\circ A`} />.
+				</li>
+				<li>Montrer qu'elle est convexe.</li>
+			</ol>
+
+			{#snippet solution()}
+				<p>On obtient</p>
+
+				<KatexBlock formula={String.raw`f(x)=\|Mx+b\|_2^2.`} />
+
+				<p>
+					La fonction
+					<KatexInline formula={String.raw`t\mapsto\|t\|_2^2`} />
+					est convexe, et
+					<KatexInline formula={String.raw`A`} />
+					est affine. Le théorème de composition affine implique donc que
+					<KatexInline formula={String.raw`f`} />
+					est convexe.
+				</p>
+			{/snippet}
+		</ExercisePanel>
+
+		<ExercisePanel number="2.10" title="Coercivité">
+			<p>
+				Soit
+				<KatexInline formula={String.raw`f(x)=x^2+\sin(x).`} />
+			</p>
+
+			<ol>
+				<li>Montrer que <KatexInline formula={String.raw`x^2`} /> est coercive.</li>
+				<li>Montrer que <KatexInline formula={String.raw`\sin(x)`} /> est minorée.</li>
+				<li>En déduire que <KatexInline formula={String.raw`f`} /> est coercive.</li>
+			</ol>
+
+			{#snippet solution()}
+				<p>On a</p>
+
+				<KatexBlock formula={String.raw`\lim_{|x|\to\infty}x^2=+\infty.`} />
+
+				<p>De plus,</p>
+
+				<KatexBlock formula={String.raw`-1\le\sin(x)\le1.`} />
+
+				<p>Ainsi</p>
+
+				<KatexBlock formula={String.raw`f(x)\ge x^2-1.`} />
+
+				<p>
+					Le membre de droite tend vers
+					<KatexInline formula={String.raw`+\infty`} />, donc
+					<KatexInline formula={String.raw`f`} />
+					est coercive.
+				</p>
+			{/snippet}
+		</ExercisePanel>
+
+		<ExercisePanel number="2.11" title="Identifier les propriétés conservées">
+			<p>
+				Pour chacune des affirmations suivantes, répondre par
+				<strong>Vrai</strong> ou
+				<strong>Faux</strong> en justifiant.
+			</p>
+
+			<ol>
+				<li>La somme de deux fonctions convexes est toujours convexe.</li>
+				<li>La somme de deux fonctions différentiables est différentiable.</li>
+				<li>La somme de deux fonctions coercives est coercive.</li>
+				<li>La composition d'une fonction convexe avec une application affine est convexe.</li>
+				<li>Toute somme de fonctions non convexes est non convexe.</li>
+			</ol>
+
+			{#snippet solution()}
+				<ol>
+					<li><strong>Vrai.</strong> C'est le théorème de conservation de la convexité.</li>
+					<li><strong>Vrai.</strong> Les dérivées se somment.</li>
+					<li>
+						<strong>Vrai.</strong> Plus généralement, il suffit qu'un terme soit coercif et les autres
+						soient minorés.
+					</li>
+					<li>
+						<strong>Vrai.</strong> C'est le théorème de composition affine.
+					</li>
+					<li>
+						<strong>Faux.</strong> Deux fonctions non convexes peuvent avoir une somme convexe.
+					</li>
+				</ol>
+			{/snippet}
 		</ExercisePanel>
 	</TheorySection>
 </PageTemplate>
