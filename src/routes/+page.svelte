@@ -61,8 +61,8 @@
 		padding: 0.75rem 1.5rem;
 		font-size: 1rem;
 		font-weight: 600;
-		color: var(--color-text-inverse);
-		background: var(--color-belief);
+		color: var(--color-belief);
+		/*background: var(--color-belief);*/
 		border-radius: var(--radius-lg);
 		text-decoration: none;
 		transition: opacity 0.2s ease;

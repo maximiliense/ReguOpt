@@ -3,9 +3,36 @@
  * Import individual modules for tree-shaking; this barrel is for convenience.
  */
 
+// ── Statistical distributions & information theory ──
 export * from './gaussian.js';
 export * from './discrete.js';
 export * from './entropy.js';
 export * from './kl.js';
 export * from './bayes.js';
 export * from './free-energy.js';
+
+// ── Part I — Optimization fundamentals ──
+export * from './test-functions.js';
+export * from './optimality.js';
+export * from './gradient-descent.js';
+export * from './stochastic.js';
+export * from './coordinate-descent.js';
+export * from './newton.js';
+
+// ── Part II — Ensembles & Regularization ──
+export * from './synthetic-data.js';
+export * from './regression.js';
+export * from './loss-functions.js';
+export * from './regularization.js';
+export * from './ensemble.js';
+export * from './diversity.js';
+export * from './random-forest.js';
+export * from './tree-utils.js';
+export * from './boosting.js';
+export * from './margin-analysis.js';
+
+// ── Part III — Set-valued Prediction (Phase 6) ──
+export * from './prediction-sets.js';
+export * from './conformal.js';
+export * from './regression-conformal.js';
+export * from './bootstrap.js';

@@ -1,23 +1,22 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
+	import { onMount, tick } from 'svelte';
 
-	/** Single path entry: d attribute + fill color */
-	interface ContourPath {
-		d: string;
-		fill: string;
+	interface Marker {
+		x: number;
+		y: number;
 	}
 
 	interface Props {
 		f: (x: number, y: number) => number;
-		domain: [[number, number], [number, number]]; // [xmin,xmax], [ymin,ymax]
+		domain: [[number, number], [number, number]];
 		width?: number;
 		height?: number;
 		gridSize?: number;
 		numLevels?: number;
-		colorScheme?: 'diverging' | 'warm' | 'cool';
 		showAxes?: boolean;
-		showLabels?: boolean;
-		snippetOverlay?: Snippet;
+		markers?: Marker[];
+		sublevel?: number | null;
+		sublevelTouchesBoundary?: boolean;
 	}
 
 	let {
@@ -25,304 +24,307 @@
 		domain,
 		width = 400,
 		height = 350,
-		gridSize = 120,
-		numLevels = 30,
-		colorScheme = 'diverging',
+		gridSize = 90,
+		numLevels = 8,
 		showAxes = true,
-		showLabels = false,
-		snippetOverlay
+		markers = [],
+		sublevel = null,
+		sublevelTouchesBoundary = $bindable(false)
 	}: Props = $props();
+
+	let canvasEl: HTMLCanvasElement;
 
 	const xMin = $derived(domain[0][0]);
 	const xMax = $derived(domain[0][1]);
 	const yMin = $derived(domain[1][0]);
 	const yMax = $derived(domain[1][1]);
 
-	const pad = 4;
-	const plotW = $derived(width - pad * 2);
-	const plotH = $derived(height - pad * 2);
+	const pad = 36;
 
-	// Map data coords -> SVG pixel coords (flip Y so positive-y is up)
-	function project(x: number, y: number): [number, number] {
-		const px = pad + ((x - xMin) / (xMax - xMin)) * plotW;
-		const py = pad + ((yMax - y) / (yMax - yMin)) * plotH;
-		return [px, py];
+	function projX(x: number): number {
+		return pad + ((x - xMin) / (xMax - xMin)) * (width - pad * 2);
+	}
+	function projY(y: number): number {
+		return pad + ((yMax - y) / (yMax - yMin)) * (height - pad * 2);
 	}
 
-	// Evaluate f on a uniform grid -> number[][]
-	const values: number[][] = $derived.by(() => {
-		const g: number[][] = new Array(gridSize);
-		for (let j = 0; j < gridSize; j++) {
-			g[j] = new Array(gridSize);
-			for (let i = 0; i < gridSize; i++) {
-				const x = xMin + (i / (gridSize - 1)) * (xMax - xMin);
-				const y = yMin + (j / (gridSize - 1)) * (yMax - yMin);
-				g[j][i] = f(x, y);
+	function computeGrid(res: number): number[][] {
+		const grid: number[][] = [];
+		for (let j = 0; j < res; j++) {
+			const row: number[] = [];
+			const y = yMax - (j / (res - 1)) * (yMax - yMin);
+			for (let i = 0; i < res; i++) {
+				const x = xMin + (i / (res - 1)) * (xMax - xMin);
+				row.push(f(x, y));
 			}
+			grid.push(row);
 		}
-		return g;
-	});
+		return grid;
+	}
 
-	// Grid min/max for normalization
-	const vRange: [number, number] = $derived.by(() => {
-		let mn = Infinity,
-			mx = -Infinity;
-		for (const row of values) {
-			for (const v of row) {
-				if (isFinite(v)) {
-					if (v < mn) mn = v;
-					if (v > mx) mx = v;
+	function percentile(vals: number[], p: number): number {
+		const sorted = [...vals].sort((a, b) => a - b);
+		return sorted[Math.floor(p * (sorted.length - 1))];
+	}
+
+	function colorFor(v: number, lo: number, hi: number): string {
+		const t = Math.min(1, Math.max(0, (v - lo) / (hi - lo || 1)));
+		const stops: [number, number, number][] = [
+			[37, 99, 235],
+			[241, 245, 249],
+			[220, 38, 38]
+		];
+		const seg = t < 0.5 ? 0 : 1;
+		const localT = t < 0.5 ? t / 0.5 : (t - 0.5) / 0.5;
+		const [r1, g1, b1] = stops[seg];
+		const [r2, g2, b2] = stops[seg + 1];
+		const r = Math.round(r1 + (r2 - r1) * localT);
+		const g = Math.round(g1 + (g2 - g1) * localT);
+		const b = Math.round(b1 + (b2 - b1) * localT);
+		return `rgb(${r},${g},${b})`;
+	}
+
+	// ── Blend helpers for sublevel spotlight effect ──
+	function parseRgb(rgbStr: string): [number, number, number] {
+		const m = rgbStr.match(/\d+/g)!;
+		return [parseInt(m[0]), parseInt(m[1]), parseInt(m[2])];
+	}
+	function blendTowards(rgbStr: string, target: [number, number, number], t: number): string {
+		const [r, g, b] = parseRgb(rgbStr);
+		const nr = Math.round(r + (target[0] - r) * t);
+		const ng = Math.round(g + (target[1] - g) * t);
+		const nb = Math.round(b + (target[2] - b) * t);
+		return `rgb(${nr},${ng},${nb})`;
+	}
+	function fadeToGray(rgbStr: string, t: number): string {
+		const [r, g, b] = parseRgb(rgbStr);
+		const gray = 0.3 * r + 0.59 * g + 0.11 * b;
+		const nr = Math.round(r + (gray - r) * t);
+		const ng = Math.round(g + (gray - g) * t);
+		const nb = Math.round(b + (gray - b) * t);
+		return `rgb(${nr},${ng},${nb})`;
+	}
+
+	const heatGrid = $derived.by(() => computeGrid(gridSize));
+
+	function drawHeatmap() {
+		if (!canvasEl) return;
+		const grid = heatGrid;
+		const res = grid.length;
+		const flat = grid.flat();
+		const lo = percentile(flat, 0.03);
+		const hi = percentile(flat, 0.97);
+
+		canvasEl.width = width;
+		canvasEl.height = height;
+		const ctx = canvasEl.getContext('2d');
+		if (!ctx) return;
+
+		const cellW = (width - pad * 2) / res;
+		const cellH = (height - pad * 2) / res;
+		for (let j = 0; j < res; j++) {
+			for (let i = 0; i < res; i++) {
+				const v = grid[j][i];
+				let color = colorFor(v, lo, hi);
+				if (sublevel != null) {
+					color =
+						v <= sublevel
+							? blendTowards(color, [16, 185, 129], 0.4) // emerald spotlight on {f ≤ c}
+							: fadeToGray(color, 0.75); // dim everything else
 				}
+				ctx.fillStyle = color;
+				ctx.fillRect(pad + i * cellW - 0.5, pad + j * cellH - 0.5, cellW + 1, cellH + 1);
 			}
-		}
-		return [mn === Infinity ? 0 : mn, mx === -Infinity ? 1 : mx];
-	});
-
-	// Color helper: normed in [-1, +1] -> 'rgb(r,g,b)'
-	function getColor(normed: number): string {
-		if (colorScheme === 'diverging') {
-			if (normed < 0) {
-				const t = Math.abs(normed);
-				return `rgb(${(10 + t * 234) | 0},${(10 + (1 - t) * 15) | 0},${(30 + (1 - t) * 182) | 0})`;
-			} else {
-				const t = normed;
-				return `rgb(${(30 + t * 214) | 0},${(10 + (1 - t) * 15) | 0},${(30 + (1 - t) * 50) | 0})`;
-			}
-		} else if (colorScheme === 'warm') {
-			const t = Math.max(0, Math.min(1, (normed + 1) / 2));
-			return `rgb(${(30 + t * 214) | 0},${(15 + t * 60) | 0},${(30 + (1 - t) * 80) | 0})`;
-		} else {
-			// cool
-			const t = Math.max(0, Math.min(1, (normed + 1) / 2));
-			return `rgb(${(30 + (1 - t) * 50) | 0},${(15 + t * 60) | 0},${(30 + t * 182) | 0})`;
 		}
 	}
 
-	// Filled contour: bucket cells by color -> ~numLevels path elements (no {@html})
-	const filledPaths = $derived.by((): ContourPath[] => {
-		if (gridSize < 2) return [];
-		const [vMin, vMax] = vRange;
-		const span = Math.max(vMax - vMin, Number.EPSILON) * 2;
-		const centerVal = (vMax + vMin) / 2;
+	function marchingSquares(res: number, levels: number[]): string[] {
+		const grid = computeGrid(res);
+		const cellW = (width - pad * 2) / (res - 1);
+		const cellH = (height - pad * 2) / (res - 1);
+		const paths: string[] = [];
 
-		// Bucket: normed -> path d string, keyed by quantized level
-		const buckets = new Map<number, { d: string; fill: string }>();
+		for (const level of levels) {
+			const segments: string[] = [];
+			for (let j = 0; j < res - 1; j++) {
+				for (let i = 0; i < res - 1; i++) {
+					const tl = grid[j][i],
+						tr = grid[j][i + 1],
+						bl = grid[j + 1][i],
+						br = grid[j + 1][i + 1];
+					const corners = [tl, tr, br, bl];
+					const above = corners.map((c) => c > level);
+					const code =
+						(above[0] ? 8 : 0) | (above[1] ? 4 : 0) | (above[2] ? 2 : 0) | (above[3] ? 1 : 0);
+					if (code === 0 || code === 15) continue;
 
-		for (let j = 0; j < gridSize; j++) {
-			for (let i = 0; i < gridSize; i++) {
-				const avg =
-					(values[j][i] + values[j]?.[i + 1] + values[j + 1]?.[i] + values[j + 1]?.[i + 1]) / 4;
-				if (!isFinite(avg)) continue;
+					const x0 = pad + i * cellW,
+						x1 = pad + (i + 1) * cellW;
+					const y0 = pad + j * cellH,
+						y1 = pad + (j + 1) * cellH;
+					const lerp = (a: number, b: number, va: number, vb: number) =>
+						a + ((level - va) / (vb - va || 1e-9)) * (b - a);
 
-				const normed = Math.max(-1, Math.min(1, (avg - centerVal) / (span / 2)));
-				// Quantize to numLevels buckets for grouping
-				const bucketKey = Math.round(normed * numLevels);
-				let entry = buckets.get(bucketKey);
-				if (!entry) {
-					entry = { d: '', fill: getColor(Math.max(-1, Math.min(1, bucketKey / numLevels))) };
-					buckets.set(bucketKey, entry);
-				}
+					const top: [number, number] = [lerp(x0, x1, tl, tr), y0];
+					const right: [number, number] = [x1, lerp(y0, y1, tr, br)];
+					const bottom: [number, number] = [lerp(x0, x1, bl, br), y1];
+					const left: [number, number] = [x0, lerp(y0, y1, tl, bl)];
 
-				const px = pad + (i / (gridSize - 1)) * plotW;
-				const py = pad + (j / (gridSize - 1)) * plotH;
-				entry.d += `M${px},${py}h${plotW / gridSize + 0.5}v${plotH / gridSize + 0.5}Z`;
-			}
-		}
-
-		return Array.from(buckets.values());
-	});
-
-	interface LinePath {
-		d: string;
-		opacity: number;
-	}
-
-	// Contour lines: one path element per level (pure Svelte SVG)
-	const contourPaths = $derived.by((): LinePath[] => {
-		if (gridSize < 2) return [];
-		const [vMin, vMax] = vRange;
-		if (vMax === vMin) return [];
-
-		const paths: LinePath[] = [];
-		const step = (vMax - vMin) / numLevels;
-		const midIdx = Math.floor(numLevels / 2);
-
-		for (let lv = 0; lv <= numLevels; lv++) {
-			const level = vMin + lv * step;
-			let d = '';
-
-			for (let j = 0; j < gridSize - 1; j++) {
-				for (let i = 0; i < gridSize - 1; i++) {
-					const a = values[j][i],
-						bb = values[j][i + 1];
-					const cc = values[j + 1][i],
-						dd = values[j + 1][i + 1];
-					if (!isFinite(a) || !isFinite(bb) || !isFinite(cc) || !isFinite(dd)) continue;
-
-					const edges: [number, number][] = [];
-
-					// Top edge
-					if ((a - level) * (bb - level) < 0) {
-						const t = (level - a) / (bb - a);
-						edges.push(
-							project(
-								xMin + ((i + t) / (gridSize - 1)) * (xMax - xMin),
-								yMin + (j / (gridSize - 1)) * (yMax - yMin)
-							)
+					const table: Record<number, [number, number][][]> = {
+						1: [[left, bottom]],
+						2: [[bottom, right]],
+						3: [[left, right]],
+						4: [[top, right]],
+						5: [
+							[left, top],
+							[bottom, right]
+						],
+						6: [[top, bottom]],
+						7: [[left, top]],
+						8: [[left, top]],
+						9: [[top, bottom]],
+						10: [
+							[top, left],
+							[right, bottom]
+						],
+						11: [[top, right]],
+						12: [[left, right]],
+						13: [[bottom, right]],
+						14: [[left, bottom]]
+					};
+					for (const [a, b] of table[code] ?? []) {
+						segments.push(
+							`M${a[0].toFixed(1)},${a[1].toFixed(1)} L${b[0].toFixed(1)},${b[1].toFixed(1)}`
 						);
-					}
-					// Right edge
-					if ((bb - level) * (dd - level) < 0) {
-						const t = (level - bb) / (dd - bb);
-						edges.push(
-							project(
-								xMin + ((i + 1) / (gridSize - 1)) * (xMax - xMin),
-								yMin + ((j + t) / (gridSize - 1)) * (yMax - yMin)
-							)
-						);
-					}
-					// Bottom edge
-					if ((cc - level) * (dd - level) < 0) {
-						const t = (level - cc) / (dd - cc);
-						edges.push(
-							project(
-								xMin + ((i + t) / (gridSize - 1)) * (xMax - xMin),
-								yMin + ((j + 1) / (gridSize - 1)) * (yMax - yMin)
-							)
-						);
-					}
-					// Left edge
-					if ((a - level) * (cc - level) < 0) {
-						const t = (level - a) / (cc - a);
-						edges.push(
-							project(
-								xMin + (i / (gridSize - 1)) * (xMax - xMin),
-								yMin + ((j + t) / (gridSize - 1)) * (yMax - yMin)
-							)
-						);
-					}
-
-					for (let k = 0; k < edges.length - 1; k++) {
-						d += `M${edges[k][0].toFixed(1)},${edges[k][1].toFixed(1)}L${edges[k + 1][0].toFixed(1)},${edges[k + 1][1].toFixed(1)}`;
 					}
 				}
 			}
-
-			if (d.length > 0) {
-				paths.push({ d, opacity: lv === midIdx ? 0.6 : 0.3 });
-			}
+			paths.push(segments.join(' '));
 		}
 		return paths;
-	});
-
-	// Axis ticks for {#each} rendering
-	const axisTickData = $derived.by(() => {
-		if (!showLabels) return [];
-		const result: { xVal: number; px: number }[] = [];
-		for (let i = 0; i <= 4; i++) {
-			const xVal = xMin + (i / 4) * (xMax - xMin);
-			result.push({ xVal, px: project(xVal, yMin)[0] });
-		}
-		return result;
-	});
-
-	const yAxisTickData = $derived.by(() => {
-		if (!showLabels) return [];
-		const result: { yVal: number; py: number }[] = [];
-		for (let j = 0; j <= 4; j++) {
-			const yVal = yMin + (j / 4) * (yMax - yMin);
-			result.push({ yVal, py: project(xMin, yVal)[1] });
-		}
-		return result;
-	});
-
-	// Computed axis endpoints for template rendering
-	const axesCoords = $derived.by(() => ({
-		xLeft: project(xMin, yMax)[0],
-		xRight: project(xMax, yMin)[0],
-		yTop: project(xMin, yMax)[1],
-		yBot: project(xMin, yMin)[1]
-	}));
-</script>
-
-<svg
-	{width}
-	{height}
-	viewBox={`0 0 ${width} ${height}`}
-	class="contour-svg"
-	role="img"
-	aria-label="Contour plot"
->
-	<!-- Filled background: one <path> per color bucket (~30 elements) -->
-	<g class="filled-cells">
-		{#each filledPaths as path}
-			<path d={path.d} fill={path.fill} shape-rendering="crispEdges" />
-		{/each}
-	</g>
-
-	<!-- Stroked contour lines: one <path> per level -->
-	<g class="contour-lines">
-		{#each contourPaths as lp}
-			<path
-				d={lp.d}
-				stroke="var(--color-evidence)"
-				fill="none"
-				stroke-width="0.5"
-				opacity={lp.opacity}
-			/>
-		{/each}
-	</g>
-
-	<!-- Axes and labels -->
-	{#if showAxes}
-		<g class="axes">
-			<line
-				x1={axesCoords.xLeft}
-				y1={axesCoords.yBot}
-				x2={axesCoords.xRight}
-				y2={axesCoords.yBot}
-				stroke="var(--color-border)"
-				stroke-width="0.5"
-			/>
-			<line
-				x1={axesCoords.xLeft}
-				y1={axesCoords.yTop}
-				x2={axesCoords.xLeft}
-				y2={axesCoords.yBot}
-				stroke="var(--color-border)"
-				stroke-width="0.5"
-			/>
-
-			{#each axisTickData as tick}
-				<text x={tick.px} y={axesCoords.yBot + 16} text-anchor="middle" class="axis-label">
-					{tick.xVal.toFixed(1)}
-				</text>
-			{/each}
-
-			{#each yAxisTickData as tick}
-				<text x={axesCoords.xLeft - 6} y={tick.py + 3.5} text-anchor="end" class="axis-label">
-					{tick.yVal.toFixed(1)}
-				</text>
-			{/each}
-		</g>
-	{/if}
-
-	<!-- User overlay snippet (trajectory, markers) -->
-	{#if snippetOverlay}
-		{@render snippetOverlay()}
-	{/if}
-</svg>
-
-<style>
-	.contour-svg {
-		display: block;
-		width: 100%;
-		height: auto;
-		user-select: none;
 	}
 
-	.axis-label {
-		fill: var(--color-text-muted);
-		font-size: 10px;
+	const contourLevels = $derived.by(() => {
+		const flat = computeGrid(40).flat();
+		const lo = percentile(flat, 0.05);
+		const hi = percentile(flat, 0.95);
+		return Array.from(
+			{ length: numLevels },
+			(_, k) => lo + ((k + 1) / (numLevels + 1)) * (hi - lo)
+		);
+	});
+	const contourPaths = $derived(marchingSquares(70, contourLevels));
+
+	const sublevelPath = $derived.by(() =>
+		sublevel == null ? '' : (marchingSquares(90, [sublevel])[0] ?? '')
+	);
+
+	// Boundary touches iff any grid cell on the domain edge already satisfies f ≤ c —
+	// the visual/geometric signature of an unbounded sublevel set escaping the view.
+	const computedTouchesBoundary = $derived.by(() => {
+		if (sublevel == null) return false;
+		const grid = heatGrid;
+		const res = grid.length;
+		for (let i = 0; i < res; i++) {
+			if (grid[0][i] <= sublevel) return true;
+			if (grid[res - 1][i] <= sublevel) return true;
+			if (grid[i][0] <= sublevel) return true;
+			if (grid[i][res - 1] <= sublevel) return true;
+		}
+		return false;
+	});
+
+	$effect(() => {
+		sublevelTouchesBoundary = computedTouchesBoundary;
+	});
+
+	$effect(() => {
+		void f;
+		void domain;
+		void width;
+		void height;
+		void sublevel;
+		tick().then(() => drawHeatmap());
+	});
+
+	onMount(() => {
+		requestAnimationFrame(() => {
+			tick().then(() => drawHeatmap());
+		});
+	});
+</script>
+
+<div class="contour-frame" style:width="{width}px" style:height="{height}px">
+	<canvas bind:this={canvasEl} {width} {height}></canvas>
+	<svg {width} {height} viewBox={`0 0 ${width} ${height}`} class="overlay">
+		{#each contourPaths as d}
+			<path {d} fill="none" stroke="rgba(15,23,42,0.35)" stroke-width="1" />
+		{/each}
+
+		{#if sublevelPath}
+			<path d={sublevelPath} fill="none" stroke="#fff" stroke-width="4.5" opacity="0.7" />
+			<path
+				d={sublevelPath}
+				fill="none"
+				stroke="#059669"
+				stroke-width="2.5"
+				stroke-dasharray={computedTouchesBoundary ? '6 4' : 'none'}
+			/>
+		{/if}
+
+		{#if showAxes}
+			{#each [xMin, (xMin + xMax) / 2, xMax] as tickVal}
+				<text
+					x={projX(tickVal)}
+					y={height - 12}
+					text-anchor="middle"
+					font-size="11"
+					fill="var(--color-text-muted)"
+				>
+					{tickVal.toFixed(1)}
+				</text>
+			{/each}
+			{#each [yMin, (yMin + yMax) / 2, yMax] as tickVal}
+				<text
+					x={16}
+					y={projY(tickVal) + 4}
+					text-anchor="middle"
+					font-size="11"
+					fill="var(--color-text-muted)"
+				>
+					{tickVal.toFixed(1)}
+				</text>
+			{/each}
+		{/if}
+
+		{#each markers as m, i (i)}
+			<circle cx={projX(m.x)} cy={projY(m.y)} r="6" fill="none" stroke="#0f172a" stroke-width="2" />
+			<circle
+				cx={projX(m.x)}
+				cy={projY(m.y)}
+				r="6"
+				fill="none"
+				stroke="#fff"
+				stroke-width="3.5"
+				opacity="0.6"
+			/>
+		{/each}
+	</svg>
+</div>
+
+<style>
+	.contour-frame {
+		position: relative;
+		border-radius: var(--radius-md, 8px);
+		overflow: hidden;
+		border: 1px solid var(--color-border);
+	}
+	canvas {
+		position: absolute;
+		inset: 0;
+	}
+	.overlay {
+		position: absolute;
+		inset: 0;
 	}
 </style>

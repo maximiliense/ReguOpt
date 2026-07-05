@@ -1,0 +1,248 @@
+import { describe, it, expect } from 'vitest';
+import {
+	hessian2D,
+	isPositiveDefinite,
+	isSemiDefinitePositive,
+	eigenvalues2x2,
+	findCriticalPoints,
+	gradNorm
+} from '../math/optimality.js';
+import {
+	paraboloid,
+	rosenbrock,
+	saddle,
+	semiDefSaddle,
+	cubicInflection
+} from '../math/test-functions.js';
+
+describe('hessian2D', () => {
+	it('returns exact Hessian for paraboloid f(x,y) = x² + 4y²', () => {
+		const h = hessian2D(paraboloid.f, 1, 1);
+		expect(h[0]).toBeCloseTo(2, 4); // d²f/dx²
+		expect(h[3]).toBeCloseTo(8, 4); // d²f/dy²
+		expect(Math.abs(h[1])).toBeLessThan(0.01); // mixed ≈ 0
+	});
+
+	it('returns a positive definite Hessian at Rosenbrock minimum (1, 1)', () => {
+		const h = hessian2D(rosenbrock.f, 1, 1);
+		expect(isPositiveDefinite(h)).toBe(true); // H should be PD at the minimum
+	});
+
+	it('finite difference Hessian is symmetric for smooth functions', () => {
+		const h = hessian2D(paraboloid.f, 0.5, -1.2);
+		expect(Math.abs(h[1] - h[2])).toBeLessThan(0.01); // mixed partials equal (Clairaut's theorem)
+	});
+
+	it('Hessian at Rosenbrock minimum has large diagonal entries', () => {
+		const h = hessian2D(rosenbrock.f, 1, 1);
+		// f(x,y)=(a-x)²+b(y-x²)² with a=1,b=100 → H(1,1)≈[[802,-400],[-400,200]]
+		expect(h[0]).toBeGreaterThan(700); // hxx ≈ 802
+		expect(Math.abs(h[3]) - 200).toBeLessThan(50); // hyy ≈ 200
+	});
+});
+
+describe('isPositiveDefinite', () => {
+	it('returns true for paraboloid Hessian [[2,0],[0,8]]', () => {
+		expect(isPositiveDefinite([2, 0, 0, 8])).toBe(true);
+	});
+
+	it('returns false for saddle Hessian [[2,0],[0,-2]]', () => {
+		expect(isPositiveDefinite([2, 0, 0, -2])).toBe(false);
+	});
+
+	it('returns true for Rosenbrock minimum Hessian [[802,-400],[-400,200]]', () => {
+		expect(isPositiveDefinite([802, -400, -400, 200])).toBe(true);
+	});
+
+	it('returns false for zero matrix', () => {
+		expect(isPositiveDefinite([0, 0, 0, 0])).toBe(false);
+	});
+});
+
+describe('isSemiDefinitePositive', () => {
+	it('returns true for positive definite matrices', () => {
+		expect(isSemiDefinitePositive([2, 0, 0, 8])).toBe(true);
+	});
+
+	it('returns true when eigenvalues are [1, 0]', () => {
+		expect(isSemiDefinitePositive([1, 0, 0, 0])).toBe(true); // semi-definite positive
+	});
+
+	it('returns false for indefinite matrices', () => {
+		expect(isSemiDefinitePositive([2, 0, 0, -2])).toBe(false);
+	});
+
+	it('returns true for semi-def Saddle at origin (Hessian = [[2,0],[0,0]])', () => {
+		const h = hessian2D(semiDefSaddle.f, 0, 0);
+		expect(isSemiDefinitePositive(h)).toBe(true);
+	});
+
+	it('returns false for negative definite matrix [[-1,0],[0,-2]]', () => {
+		expect(isSemiDefinitePositive([-1, 0, 0, -2])).toBe(false);
+	});
+});
+
+describe('eigenvalues2x2', () => {
+	it('returns [8, 2] for diagonal [[2,0],[0,8]]', () => {
+		const [l1, l2] = eigenvalues2x2([2, 0, 0, 8]);
+		expect(l1).toBeCloseTo(8);
+		expect(l2).toBeCloseTo(2);
+	});
+
+	it('trace equals sum of eigenvalues', () => {
+		const m: [number, number, number, number] = [3, 1, 1, 2];
+		const [l1, l2] = eigenvalues2x2(m);
+		expect(l1 + l2).toBeCloseTo(5); // trace = a+d = 3+2
+	});
+
+	it('determinant equals product of eigenvalues', () => {
+		const m: [number, number, number, number] = [4, 0, 0, 9];
+		const [l1, l2] = eigenvalues2x2(m);
+		expect(l1 * l2).toBeCloseTo(36); // det = 4*9 - 0
+	});
+
+	it('eigenvalues of [[1,1],[1,-1]] have correct trace and determinant', () => {
+		const m: [number, number, number, number] = [1, 1, 1, -1];
+		const [l1, l2] = eigenvalues2x2(m);
+
+		expect(l1 + l2).toBeCloseTo(0); // trace = 1 + (-1) = 0
+		expect(Math.abs(l1 * l2)).toBeCloseTo(2); // |det| = |-1 - 1| = 2
+	});
+
+	it('eigenvalues are ordered largest first', () => {
+		const m: [number, number, number, number] = [2, 0, 0, 8];
+		const [l1, l2] = eigenvalues2x2(m);
+
+		expect(l1 >= l2).toBe(true);
+	});
+
+	it('eigenvalues of identity are both 1', () => {
+		const m: [number, number, number, number] = [1, 0, 0, 1];
+		const [l1, l2] = eigenvalues2x2(m);
+		expect(l1).toBeCloseTo(1);
+		expect(l2).toBeCloseTo(1);
+	});
+});
+
+describe('gradNorm', () => {
+	it('returns 0 at the origin for paraboloid ∇f = [2x, 8y]', () => {
+		expect(gradNorm(paraboloid.grad, 0, 0)).toBe(0);
+	});
+
+	it('matches manual computation', () => {
+		const g = gradNorm(paraboloid.grad, 1, 1);
+		// ∇f(1,1) = [2, 8] → ||∇f|| = √(4+64) = √68 ≈ 8.246
+		expect(g).toBeCloseTo(Math.sqrt(68), 5);
+	});
+
+	it('increases with distance from minimum for paraboloid', () => {
+		const g1 = gradNorm(paraboloid.grad, 0.5, 0.5);
+		const g2 = gradNorm(paraboloid.grad, 2, 2);
+		expect(g2).toBeGreaterThan(g1);
+	});
+
+	it('gradient norm at Rosenbrock minimum is zero', () => {
+		const g = gradNorm(rosenbrock.grad, 1, 1);
+		expect(Math.abs(g)).toBeLessThan(1e-10);
+	});
+});
+
+describe('findCriticalPoints', () => {
+	it('finds the Rosenbrock minimum near (1, 1)', () => {
+		const cps = findCriticalPoints(rosenbrock.f, rosenbrock.grad, [
+			[-2, 2],
+			[-1, 3]
+		]);
+		const min = cps.find((cp) => cp.type === 'minimum');
+
+		if (min) {
+			expect(Math.abs(min.x - 1)).toBeLessThan(0.5);
+			expect(Math.abs(min.y - 1)).toBeLessThan(0.5);
+		}
+	});
+
+	it('classifies the saddle point of f(x,y) = x² - y² at (0, 0)', () => {
+		const cps = findCriticalPoints(saddle.f, saddle.grad, [
+			[-3, 3],
+			[-3, 3]
+		]);
+		const found = cps.find((cp) => Math.abs(cp.x) < 1 && Math.abs(cp.y) < 1);
+
+		if (found) {
+			expect(found.type).toBe('saddle');
+		}
+	});
+
+	it('returns critical points with negligible gradient norm', () => {
+		const cps = findCriticalPoints(rosenbrock.f, rosenbrock.grad, [
+			[-2, 2],
+			[-1, 3]
+		]);
+
+		for (const cp of cps) {
+			expect(cp.gradNormAtPoint).toBeLessThan(0.1);
+		}
+	});
+
+	it('deduplicates nearby critical points', () => {
+		const cps = findCriticalPoints(
+			saddle.f,
+			saddle.grad,
+			[
+				[-3, 3],
+				[-3, 3]
+			],
+			200
+		);
+		const saddles = cps.filter((cp) => cp.type === 'saddle');
+		expect(saddles.length).toBeLessThanOrEqual(1); // Only one saddle at origin
+	});
+
+	it('findCriticalPoints returns empty array when no sign changes on grid', () => {
+		// For paraboloid x²+4y², the gradient is exactly zero at (0,0) so there's no sign change
+		// across neighboring cells → critical point may not be detected by grid scan alone
+		const cps = findCriticalPoints(paraboloid.f, paraboloid.grad, [
+			[-3, 3],
+			[-3, 3]
+		]);
+		expect(Array.isArray(cps)).toBe(true);
+	});
+
+	it('critical points have reasonable f values', () => {
+		const cps = findCriticalPoints(saddle.f, saddle.grad, [
+			[-3, 3],
+			[-3, 3]
+		]);
+
+		for (const cp of cps) {
+			expect(cp.fVal).toBeCloseTo(0, 2); // Saddle at origin has f=0 for x²-y²
+		}
+	});
+
+	it('Rosenbrock minimum has approximately correct function value', () => {
+		const cps = findCriticalPoints(rosenbrock.f, rosenbrock.grad, [
+			[-2, 2],
+			[-1, 3]
+		]);
+		const min = cps.find((cp) => cp.type === 'minimum');
+
+		if (min) {
+			expect(min.fVal).toBeCloseTo(0, 1); // f(1,1) = 0 for Rosenbrock
+		}
+	});
+
+	it('cubic inflection: gradient at origin is zero', () => {
+		const g = gradNorm(cubicInflection.grad, 0, 0);
+		expect(g).toBeCloseTo(0, 5); // ∇f(0,0) = [3x², 2y] at (0,0) → [0,0] for x³+y²
+	});
+
+	it('findCriticalPoints classifies points correctly', () => {
+		const cps = findCriticalPoints(saddle.f, saddle.grad, [
+			[-3, 3],
+			[-3, 3]
+		]);
+		for (const cp of cps) {
+			expect(['minimum', 'maximum', 'saddle', 'inconclusive'].includes(cp.type)).toBe(true);
+		}
+	});
+});

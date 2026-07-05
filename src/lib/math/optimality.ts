@@ -1,0 +1,186 @@
+/**
+ * Optimality condition helpers.
+ * Find critical points, compute Hessians numerically, and test positive definiteness.
+ */
+
+type Grad2D = (x: number, y: number) => [number, number];
+type Func2D = (x: number, y: number) => number;
+
+/** 2×2 matrix as flat array [a,b,c,d] representing [[a,b],[c,d]] */
+export type Matrix2x2 = [number, number, number, number];
+
+/** Numerical Hessian using centered finite differences */
+export function hessian2D(f: Func2D, x: number, y: number, h = 1e-5): Matrix2x2 {
+	const f00 = f(x, y);
+	const fh0 = f(x + h, y);
+	const f0h = f(x, y + h);
+	const fhh = f(x + h, y + h);
+
+	const dxx = (f(x + h, y) - 2 * f00 + f(x - h, y)) / (h * h);
+	const dyx = (fhh - fh0 - f0h + f00) / (2 * h * h); // mixed derivative
+	const dyy = (f(x, y + h) - 2 * f00 + f(x, y - h)) / (h * h);
+
+	return [dxx, dyx, dyx, dyy]; // symmetric for C² functions
+}
+
+/** Test if a 2×2 matrix is positive definite via Sylvester's criterion */
+export function isPositiveDefinite(m: Matrix2x2): boolean {
+	const [a, b, c, d] = m;
+	return a > 0 && a * d - b * c > 0; // leading principal minors all positive
+}
+
+/** Test if a 2×2 symmetric matrix is semi-definite positive */
+export function isSemiDefinitePositive(m: Matrix2x2, tol = 1e-8): boolean {
+	// m = [hxx, hxy, hyx, hyy]; use index access to skip unused element
+	const a = m[0],
+		b = m[1],
+		d = m[3];
+	// Both eigenvalues ≥ -tol
+	if (a < -tol || d < -tol) return false;
+	if (a * d - b * b < -tol) return false;
+	return true;
+}
+
+/** Eigenvalues of a 2×2 symmetric matrix [[a,b],[b,d]] */
+export function eigenvalues2x2(m: Matrix2x2): [number, number] {
+	// m = [hxx, hxy, hyx, hyy]; use index access to skip unused element
+	const a = m[0],
+		b = m[1],
+		d = m[3];
+	const trace = a + d;
+	const det = a * d - b * b;
+	const disc = Math.max(0, trace * trace - 4 * det);
+	const sqrtDisc = Math.sqrt(disc);
+	return [(trace + sqrtDisc) / 2, (trace - sqrtDisc) / 2];
+}
+
+/** Gradient norm at a point */
+export function gradNorm(grad: Grad2D, x: number, y: number): number {
+	const [gx, gy] = grad(x, y);
+	return Math.sqrt(gx * gx + gy * gy);
+}
+
+/** Find critical points by coarse grid scan then Newton refinement */
+interface CriticalPoint {
+	x: number;
+	y: number;
+	fVal: number;
+	type: 'minimum' | 'maximum' | 'saddle' | 'inconclusive';
+	gradNormAtPoint: number;
+}
+
+export function findCriticalPoints(
+	f: Func2D,
+	grad: Grad2D,
+	domain: [[number, number], [number, number]],
+	gridSize = 100,
+	newtonTol = 1e-10,
+	maxIter = 50
+): CriticalPoint[] {
+	const [xMin, xMax] = domain[0];
+	const [yMin, yMax] = domain[1];
+
+	// Step 1: Find grid cells where gradient changes sign (critical point candidate)
+	const dx = (xMax - xMin) / gridSize;
+	const dy = (yMax - yMin) / gridSize;
+
+	const candidates: { x: number; y: number }[] = [];
+
+	for (let i = 0; i < gridSize; i++) {
+		for (let j = 0; j < gridSize; j++) {
+			const x1 = xMin + i * dx,
+				x2 = x1 + dx;
+			const y1 = yMin + j * dy,
+				y2 = y1 + dy;
+
+			const [gx1, gy1] = grad(x1, y1);
+			const gx2 = grad(x2, y1)[0];
+			const gy3 = grad(x1, y2)[1];
+
+			// Sign change in gradient components suggests a root nearby
+			if (gx1 * gx2 < 0 && gy1 * gy3 < 0) {
+				candidates.push({ x: (x1 + x2) / 2, y: (y1 + y2) / 2 });
+			}
+		}
+	}
+
+	// Step 2: Refine each candidate with Newton's method
+	const refined: CriticalPoint[] = [];
+	const seen = new Set<string>(); // deduplicate nearby points
+
+	for (const c of candidates) {
+		const result = refineNewton(f, grad, c.x, c.y, newtonTol, maxIter);
+		if (!result) continue;
+
+		// Deduplicate: skip if too close to an existing point
+		const key = `${Math.round(result.x * 1e4)},${Math.round(result.y * 1e4)}`;
+		if (seen.has(key)) continue;
+		seen.add(key);
+
+		// Classify using Hessian
+		const hess = hessian2D(f, result.x, result.y);
+		let type: CriticalPoint['type'];
+		if (isPositiveDefinite(hess)) {
+			type = 'minimum';
+		} else {
+			const [ev1, ev2] = eigenvalues2x2(hess);
+			if (ev1 < -1e-6 && ev2 < -1e-6) type = 'maximum';
+			else if (ev1 * ev2 < -1e-6) type = 'saddle';
+			else type = 'inconclusive';
+		}
+
+		refined.push({
+			x: result.x,
+			y: result.y,
+			fVal: f(result.x, result.y),
+			type,
+			gradNormAtPoint: gradNorm(grad, result.x, result.y)
+		});
+	}
+
+	return refined;
+}
+
+/** Refine a critical point candidate with Newton's method */
+function refineNewton(
+	f: Func2D,
+	grad: Grad2D,
+	x0: number,
+	y0: number,
+	tol = 1e-10,
+	maxIter = 50
+): { x: number; y: number } | null {
+	let x = x0,
+		y = y0;
+
+	for (let k = 0; k < maxIter; k++) {
+		const [gx, gy] = grad(x, y);
+		const gNorm = Math.sqrt(gx * gx + gy * gy);
+
+		if (gNorm < tol) return { x, y };
+
+		const hess = hessian2D(f, x, y);
+		// m = [hxx, hxy, hyx, hyy]
+		const hxx = hess[0],
+			hxy = hess[1],
+			hyy = hess[3];
+		const det = hxx * hyy - hxy * hxy;
+
+		if (Math.abs(det) < 1e-15) {
+			// Hessian is singular — fall back to steepest descent step
+			const stepSize = gNorm > 0 ? tol / gNorm : 1e-4;
+			x -= gx * stepSize;
+			y -= gy * stepSize;
+			continue;
+		}
+
+		// Newton step: [dx, dy] = -H⁻¹ · ∇f
+		const dxx = (-hyy * gx + hxy * gy) / det;
+		const dyy = (hxy * gx - hxx * gy) / det;
+
+		x += dxx;
+		y += dyy;
+	}
+
+	return null; // did not converge
+}
