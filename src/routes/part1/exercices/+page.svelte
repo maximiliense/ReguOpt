@@ -3,7 +3,6 @@
 	import TheorySection from '$lib/components/narrative/TheorySection.svelte';
 	import ExercisePanel from '$lib/components/narrative/ExercisePanel.svelte';
 	import KatexInline from '$lib/components/narrative/KatexInline.svelte';
-	import KatexBlock from '$lib/components/narrative/KatexBlock.svelte';
 	import { getPageByPath, getNextPage, getPrevPage } from '$lib/navigation.js';
 
 	const meta = getPageByPath('/part1/exercises1');
@@ -78,7 +77,6 @@
 	const f212 = 'f(x) = x^3 - 3x';
 	const f212p = "f'(x) = 3x^2 - 3";
 	const f212crit = 'x = \\pm 1';
-	const f212pp = "f''(x) = 6x";
 	const f212ppAt1 = "f''(1) = 6 > 0";
 	const f212ppAtNeg1 = "f''(-1) = -6 < 0";
 	const f212lim = '\\lim_{x \\to -\\infty} f(x) = -\\infty';
