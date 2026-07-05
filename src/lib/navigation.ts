@@ -20,6 +20,7 @@ const RAW_PAGES = [
 	{ path: '/part1/lesson2', title: "Fonctions d'optimisation en ML", part: 1 },
 	{ path: '/part1/lesson3', title: 'Descente de gradient & accélération', part: 1 },
 	{ path: '/part1/lesson4', title: 'SGD, CD & Newton', part: 1 },
+	{ path: '/part1/exercices', title: 'Exercices', part: 1 },
 
 	// Partie II — Régularisation
 	{ path: '/part2/lesson1', title: 'Méthodes ensemblistes et Bagging', part: 2 },
