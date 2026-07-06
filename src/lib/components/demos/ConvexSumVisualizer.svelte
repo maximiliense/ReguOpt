@@ -9,21 +9,16 @@
 	import Slider from '$lib/components/controls/Slider.svelte';
 	import SliderGrid from '$lib/components/layout/SliderGrid.svelte';
 
-	let alpha1 = $state(0.5);
-	let alpha2 = $state(0.5);
-	let offset1 = $state(0);
-	let offset2 = $state(2);
+	let a = $state(2);
 
 	const xDomain: [number, number] = [-4, 4];
 	const N = 300;
 
-	// f1(x) = exp((alpha1 * x^2 + offset1) / 2) — always convex
 	function f1(x: number): number {
-		return Math.exp((alpha1 * x * x + offset1) / 2);
+		return x * x;
 	}
-	// f2(x) = cosh(alpha2 * (x - offset2)) — always convex
 	function f2(x: number): number {
-		return Math.cosh(alpha2 * (x - offset2));
+		return (x - a) ** 2;
 	}
 
 	const curveA = $derived(
@@ -43,7 +38,8 @@
 	const curveSum = $derived(
 		Array.from({ length: N }, (_, i) => {
 			const x = xDomain[0] + (xDomain[1] - xDomain[0]) * (i / (N - 1));
-			return [x, f1(x) + f2(x)] as [number, number];
+			const y = (f1(x) + f2(x)) / 2;
+			return [x, y] as [number, number];
 		})
 	);
 
@@ -61,8 +57,8 @@
 		const lo = Math.min(chordA, chordB);
 		const hi = Math.max(chordA, chordB);
 		const steps = 40;
-		const yLo = f1(lo) + f2(lo);
-		const yHi = f1(hi) + f2(hi);
+		const yLo = (f1(lo) + f2(lo)) / 2;
+		const yHi = (f1(hi) + f2(hi)) / 2;
 		return Array.from({ length: steps + 1 }, (_, i) => {
 			const t = i / steps;
 			return [lerp(lo, hi, t), lerp(yLo, yHi, t)] as [number, number];
@@ -88,12 +84,9 @@
 	// (curly-brace attributes), not backslash-escape sequences inside plain
 	// quoted attributes — the latter never gets interpreted by Svelte and
 	// renders literally as "\u03b1₁" etc.
-	const labelF1 = 'f\u2081(x)'; // f₁(x)
-	const labelF2 = 'f\u2082(x)'; // f₂(x)
-	const labelSum = 'f\u2081 + f\u2082'; // f₁ + f₂
-	const labelAlpha1 = '\u03b1\u2081'; // α₁
-	const labelAlpha2 = '\u03b1\u2082'; // α₂
-	const labelOffset2 = 'décalage f\u2082'; // décalage f₂
+	const labelF1 = 'f\u2081(x) = x²';
+	const labelF2 = 'f\u2082(x) = (x − a)²';
+	const labelSum = '\u00bd(f\u2081 + f\u2082)';
 
 	const legend = $derived([
 		{ label: labelF1, color: '#8b5cf6', kind: 'line' as const },
@@ -105,7 +98,7 @@
 
 <div class="convex-sum">
 	<Figure type="chart">
-		<DensityChart {curves} {xDomain} {yMax} height={250} nTicks={6} {legend} />
+		<DensityChart {curves} {xDomain} {yMax} height={380} nTicks={6} yAxis {legend} />
 	</Figure>
 
 	<SliderGrid>
@@ -115,17 +108,15 @@
 			<Slider bind:value={chordB} min={-3.5} max={4} step={0.1} label="b" />
 		</div>
 		<div class="group">
-			<div class="group-title">Formes des fonctions</div>
-			<Slider bind:value={alpha1} min={0.1} max={2} step={0.05} label={labelAlpha1} />
-			<Slider bind:value={alpha2} min={0.1} max={2} step={0.05} label={labelAlpha2} />
-			<Slider bind:value={offset2} min={-4} max={4} step={0.1} label={labelOffset2} />
+			<div class="group-title">Fonctions</div>
+			<Slider bind:value={a} min={-4} max={4} step={0.1} label="décalage a" />
 		</div>
 	</SliderGrid>
 
 	<p class="caption">
-		La courbe <strong style="color: #3b82f6">bleue</strong> (somme) reste toujours en dessous de la
-		corde
-		<strong style="color: #ef4444">rouge pointillée</strong>, illustrant que la somme de deux
+		La courbe <strong style="color: #3b82f6">bleue</strong> (moyenne) reste toujours en dessous de
+		la corde
+		<strong style="color: #ef4444">rouge pointillée</strong>, illustrant que la moyenne de deux
 		fonctions convexes est convexe.
 	</p>
 </div>

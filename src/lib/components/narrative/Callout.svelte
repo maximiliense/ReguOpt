@@ -82,6 +82,7 @@
 		padding: 1rem 1.25rem;
 		margin: 0;
 		margin-top: 1em;
+		margin-bottom: 1em;
 	}
 
 	.callout-header {

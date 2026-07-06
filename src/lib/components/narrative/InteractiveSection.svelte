@@ -18,6 +18,7 @@
 		border-radius: var(--radius-lg);
 		padding: 1.5rem;
 		position: relative;
+		margin-bottom: 1em;
 	}
 
 	/* The title on the box border */

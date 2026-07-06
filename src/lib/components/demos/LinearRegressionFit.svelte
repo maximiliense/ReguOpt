@@ -148,7 +148,7 @@
 	<p class="cap">
 		<span style="color:#f59e0b">Orange</span> : GD &nbsp;|&nbsp;
 		<span style="color:#10b981">Vert</span> : OLS <KatexInline
-			formula={`(X^\top X)^{-1} X^\top y`}
+			formula={String.raw`(X^\top X)^{-1} X^\top y`}
 		/>
 	</p>
 </div>

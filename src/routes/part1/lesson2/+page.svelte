@@ -21,6 +21,7 @@
 	import LinearRegressionFit from '$lib/components/demos/LinearRegressionFit.svelte';
 	import RidgePathExplorer from '$lib/components/demos/RidgePathExplorer.svelte';
 	import HessianConditionNumber from '$lib/components/demos/HessianConditionNumber.svelte';
+	import LassoPathExplorer from '$lib/components/demos/LassoPathExplorer.svelte';
 
 	// ── Page metadata ──
 	const meta = getPageByPath('/part1/lesson2');
@@ -548,6 +549,52 @@
 				</li>
 			</ol>
 		</ExercisePanel>
+		<h3>Régression Lasso</h3>
+
+		<p>
+			Le <strong>Lasso</strong> (Least Absolute Shrinkage and Selection Operator) ajoute une pénalité
+			proportionnelle à la norme L1 des poids :
+		</p>
+		<KatexBlock
+			formula={String.raw`
+\min_{w \in \mathbb{R}^d}\left(\frac{1}{2n}\|Xw - y\|^2 + \lambda\,\|w\|_1\right),
+\quad
+\|w\|_1 = \sum_{j=1}^d |w_j|.
+			`}
+		/>
+		<p>
+			Pour des features orthonormées (<KatexInline formula={String.raw`X^\top X = I`} />), la
+			solution se décompose en coordonnées indépendantes. Chaque poids suit l'<strong
+				>opérateur de seuillage doux</strong
+			> :
+		</p>
+		<KatexBlock
+			formula={String.raw`
+w_j^*(\lambda)
+=
+\text{sign}(w_j^{\text{OLS}})
+\cdot
+\max\bigl(|w_j^{\text{OLS}}| - \lambda,\; 0\bigr).
+				`}
+		/>
+
+		<Callout type="intuition">
+			{#snippet children()}
+				<p>
+					Lorsque <KatexInline formula={String.raw`\lambda \ge |w_j^{\text{OLS}}|`} />, le
+					coefficient
+					<KatexInline formula={String.raw`w_j^*`} /> devient <strong>exactement nul</strong>.
+					Contrairement au Ridge qui rétrécit mais n'annule jamais les poids, le Lasso réalise une
+					<strong>sélection automatique de variables</strong>
+					en produisant des modèles <strong>sparses</strong>. C'est la propriété fondamentale du L1
+					en apprentissage automatique.
+				</p>
+			{/snippet}
+		</Callout>
+
+		<InteractiveSection tag="Explorer">
+			<LassoPathExplorer />
+		</InteractiveSection>
 
 		<h3>Régression logistique</h3>
 
