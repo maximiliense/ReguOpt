@@ -1,0 +1,1 @@
+import{bf as l,Z as t,aA as u,bc as o}from"./CZw-FDZA.js";function c(e){throw new Error("https://svelte.dev/e/lifecycle_outside_component")}function a(e){t===null&&c(),u&&t.l!==null?f(t).m.push(e):l(()=>{const n=o(e);if(typeof n=="function")return n})}function s(e){t===null&&c(),a(()=>()=>o(e))}function f(e){var n=e.l;return n.u??={a:[],b:[],m:[]}}export{a,s as o};
