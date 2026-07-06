@@ -38,8 +38,7 @@
 
 	// Taylor decay
 	const taylorDecay = 'f(x - \\alpha \\nabla f(x)) < f(x)';
-	const taylorExp1 =
-		'f(x - \\alpha \\nabla f(x)) &= f(x) + \\nabla f(x)^{\\top} (-\\alpha \\nabla f(x)) + o(\\alpha \\|\\nabla f(x)\\|) \\\\ &= f(x) - \\alpha \\|\\nabla f(x)\\|^2 + o(\\alpha)';
+	const taylorExp1 = String.raw`\begin{aligned}f(x - \alpha \nabla f(x)) &= f(x) + \nabla f(x)^{\top} (-\alpha \nabla f(x)) + o(\alpha \|\nabla f(x)\|) \\&= f(x) - \alpha \|\nabla f(x)\|^2 + o(\alpha)\end{aligned}`;
 	const taylorDominant = '-\\alpha \\|\\nabla f(x)\\|^2';
 
 	// Step sizes
@@ -68,8 +67,7 @@
 	const momUnrolled = 'v^{(k)} = \\sum_{i=0}^{k-1} \\beta^i \\nabla f(x^{(k-1-i)})';
 
 	// Nesterov
-	const nagLookahead =
-		'\\tilde{x}^{(k)} &= x^{(k)} + \\beta (x^{(k)} - x^{(k-1)}) \\\\ x^{(k+1)} &= \\tilde{x}^{(k)} - \\alpha \\nabla f(\\tilde{x}^{(k)})';
+	const nagLookahead = String.raw`\begin{aligned}\tilde{x}^{(k)} &= x^{(k)} + \beta (x^{(k)} - x^{(k-1)}) \\x^{(k+1)} &= \tilde{x}^{(k)} - \alpha \nabla f(\tilde{x}^{(k)})\end{aligned}`;
 	const nagRate = '\\mathcal{O}(1/k^2)';
 
 	// Gradient

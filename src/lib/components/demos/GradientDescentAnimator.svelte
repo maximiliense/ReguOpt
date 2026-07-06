@@ -61,12 +61,10 @@
 	const width = $derived(Math.min(containerWidth, 480));
 	const height = $derived(Math.round(width * aspect));
 
+	const pad = 36; // Export du padding pour l'utiliser dans le clipPath
+
 	let trajectory: { x: number; y: number; fVal: number }[] = $state([]);
 
-	// ── Everything about "where are we now" is DERIVED from trajectory, never
-	// tracked as separate mutable state — this is what removes the class of bug
-	// where a manually-maintained counter (the old currentStep) falls out of
-	// sync with the data it's supposed to describe. ──
 	const lastPoint = $derived(trajectory[trajectory.length - 1] ?? null);
 	const lastGrad = $derived.by((): [number, number] => {
 		if (!lastPoint) return [0, 0];
@@ -76,6 +74,13 @@
 	const isConverged = $derived(lastGradNorm < 1e-3);
 	const stepCount = $derived(Math.max(0, trajectory.length - 1));
 
+	// Prédiction brute (permet de voir l'overflow réel de la flèche)
+	const nextPredictedPoint = $derived.by(() => {
+		if (!lastPoint || isConverged || diverged) return null;
+		const [nx, ny] = gdStep(lastPoint.x, lastPoint.y, func.grad, alpha);
+		return { x: nx, y: ny };
+	});
+
 	function reset() {
 		stopAnim();
 		diverged = false;
@@ -84,20 +89,24 @@
 	}
 
 	function step() {
-		if (isConverged || diverged || !lastPoint) return;
-		const [nx, ny] = gdStep(lastPoint.x, lastPoint.y, func.grad, alpha);
+		if (isConverged || diverged || !nextPredictedPoint) return;
 
-		const clampedX = Math.max(domain[0][0], Math.min(domain[0][1], nx));
-		const clampedY = Math.max(domain[1][0], Math.min(domain[1][1], ny));
-		const fVal = func.f(clampedX, clampedY);
+		const nx = nextPredictedPoint.x;
+		const ny = nextPredictedPoint.y;
+		const fVal = func.f(nx, ny);
 
-		if (!Number.isFinite(fVal)) {
+		// Ajout du point non-clamped pour autoriser l'overflow mathématique et graphique
+		trajectory = [...trajectory, { x: nx, y: ny, fVal }];
+
+		// On vérifie la divergence si on sort massivement des limites ou si la valeur diverge
+		if (
+			!Number.isFinite(fVal) ||
+			Math.abs(nx) > domain[0][1] * 3 ||
+			Math.abs(ny) > domain[1][1] * 3
+		) {
 			diverged = true;
 			stopAnim();
-			return;
 		}
-
-		trajectory = [...trajectory, { x: clampedX, y: clampedY, fVal }];
 	}
 
 	function play() {
@@ -123,7 +132,6 @@
 		playing = false;
 	}
 
-	// Restart the interval at the new speed if currently playing.
 	$effect(() => {
 		void stepIntervalMs;
 		if (playing) {
@@ -146,17 +154,14 @@
 		reset();
 	}
 
-	// Initialize on load
 	reset();
 
 	onDestroy(stopAnim);
 
 	function projX(x: number): number {
-		const pad = 36;
 		return pad + ((x - domain[0][0]) / (domain[0][1] - domain[0][0])) * (width - pad * 2);
 	}
 	function projY(y: number): number {
-		const pad = 36;
 		return pad + ((domain[1][1] - y) / (domain[1][1] - domain[1][0])) * (height - pad * 2);
 	}
 
@@ -164,7 +169,6 @@
 		const total = trajectory.length - 1;
 		if (total === 0) return '#f59e0b';
 		const t = i / total;
-		// Amber → Green gradient
 		const r = Math.round(245 * (1 - t) + 16 * t);
 		const g = Math.round(158 * (1 - t) + 163 * t);
 		const b = Math.round(11 * (1 - t) + 129 * t);
@@ -183,10 +187,6 @@
 		return segs;
 	});
 
-	// ── Convergence sparkline: ‖∇f(x⁽ᵏ⁾)‖ across iterations, log scale.
-	// This is the actual quantity convergence theorems (Lipschitz gradient,
-	// strong convexity) make predictions about — plotting it live turns an
-	// abstract theorem into something you watch happen. ──
 	const gradNormHistory = $derived.by(() =>
 		trajectory.map((pt) => {
 			const g = func.grad(pt.x, pt.y);
@@ -240,7 +240,6 @@
 		</div>
 	</SliderGrid>
 
-	<!-- Transport controls -->
 	<div class="transport">
 		<button class="btn" onclick={reset}>⟲ Reset</button>
 		<button class="btn" onclick={step} disabled={isConverged || diverged}>▶ Step</button>
@@ -265,61 +264,66 @@
 		</div>
 	{/if}
 
-	<!-- Chart with overlays -->
 	<div class="chart-container">
 		<ContourPlot f={func.f} {domain} {width} {height} />
 		<svg class="overlay" {width} {height} viewBox={`0 0 ${width} ${height}`}>
-			{#each trajectorySegments as seg}
-				<path d={seg.d} fill="none" stroke={seg.color} stroke-width="2.5" stroke-linecap="round" />
-			{/each}
-
-			<!-- Trajectory dots -->
-			{#each trajectory as pt, i (i)}
-				<circle
-					cx={projX(pt.x)}
-					cy={projY(pt.y)}
-					r={i === trajectory.length - 1 ? 5 : 3}
-					fill={segmentColor(i)}
-				/>
-			{/each}
-
-			<!-- Gradient vector at current point -->
-			{#if !isConverged && lastPoint && lastGradNorm > 1e-9}
-				{@const scale = Math.min(40 / lastGradNorm, alpha * 2)}
-				{@const ex = projX(lastPoint.x) - scale * lastGrad[0]}
-				{@const ey = projY(lastPoint.y) + scale * lastGrad[1]}
-				<line
-					x1={projX(lastPoint.x)}
-					y1={projY(lastPoint.y)}
-					x2={ex}
-					y2={ey}
-					stroke="#ef4444"
-					stroke-width="3"
-					marker-end="url(#arrowhead)"
-				/>
-				<text
-					x={(projX(lastPoint.x) + ex) / 2 + 8}
-					y={(projY(lastPoint.y) + ey) / 2 - 4}
-					fill="#ef4444"
-					font-size="10"
-					font-weight="600">−∇f</text
-				>
-			{/if}
-
 			<defs>
 				<polygon id="arrowhead" points="0,0 -8,-4 -3,0 -8,4" fill="#ef4444" />
+				<clipPath id="graph-clip">
+					<rect x={pad} y={pad} width={width - pad * 2} height={height - pad * 2} />
+				</clipPath>
 			</defs>
+
+			<g clip-path="url(#graph-clip)">
+				{#each trajectorySegments as seg}
+					<path
+						d={seg.d}
+						fill="none"
+						stroke={seg.color}
+						stroke-width="2.5"
+						stroke-linecap="round"
+					/>
+				{/each}
+
+				{#each trajectory as pt, i (i)}
+					<circle
+						cx={projX(pt.x)}
+						cy={projY(pt.y)}
+						r={i === trajectory.length - 1 ? 5 : 3}
+						fill={segmentColor(i)}
+					/>
+				{/each}
+
+				{#if nextPredictedPoint}
+					{@const ex = projX(nextPredictedPoint.x)}
+					{@const ey = projY(nextPredictedPoint.y)}
+					<line
+						x1={projX(lastPoint.x)}
+						y1={projY(lastPoint.y)}
+						x2={ex}
+						y2={ey}
+						stroke="#ef4444"
+						stroke-width="3"
+						marker-end="url(#arrowhead)"
+					/>
+					<text
+						x={(projX(lastPoint.x) + ex) / 2 + 8}
+						y={(projY(lastPoint.y) + ey) / 2 - 4}
+						fill="#ef4444"
+						font-size="10"
+						font-weight="600">−∇f</text
+					>
+				{/if}
+			</g>
 		</svg>
 	</div>
 
-	<!-- Legend -->
 	<div class="legend">
 		<span class="legend-item"><span class="swatch swatch-start"></span>Début</span>
 		<span class="legend-item"><span class="swatch swatch-end"></span>Fin</span>
 		<span class="legend-item"><span class="swatch swatch-grad"></span>−∇f(x⁽ᵏ⁾)</span>
 	</div>
 
-	<!-- Convergence sparkline -->
 	<div class="spark-panel">
 		<div class="spark-title">‖∇f(x⁽ᵏ⁾)‖ en fonction de k (échelle log)</div>
 		<svg
@@ -348,7 +352,6 @@
 			<path d={sparkPath} fill="none" stroke={opt.color} stroke-width="2" />
 			{#if gradNormHistory.length > 0}
 				{@const lastIdx = gradNormHistory.length - 1}
-				{@const lastLog = Math.log10(gradNormHistory[lastIdx])}
 				<circle
 					cx={sparkPad.l +
 						(lastIdx / Math.max(1, gradNormHistory.length - 1)) *
@@ -368,6 +371,7 @@
 </div>
 
 <style>
+	/* ... Votre CSS d'origine ... */
 	.demo-wrap {
 		display: flex;
 		flex-direction: column;
@@ -375,14 +379,12 @@
 		gap: 0.75rem;
 		width: 100%;
 	}
-
 	.options-row {
 		display: flex;
 		gap: 0.5rem;
 		flex-wrap: wrap;
 		justify-content: center;
 	}
-
 	.options-row button {
 		display: inline-flex;
 		align-items: center;
@@ -413,7 +415,6 @@
 	.options-row button.active .dot {
 		background: white !important;
 	}
-
 	.grp {
 		display: flex;
 		flex-direction: column;
@@ -425,7 +426,6 @@
 		letter-spacing: 0.05em;
 		color: var(--color-text-muted);
 	}
-
 	.transport {
 		display: flex;
 		align-items: center;
@@ -434,7 +434,6 @@
 		justify-content: center;
 		font-size: 0.85rem;
 	}
-
 	.btn {
 		padding: 0.3rem 0.75rem;
 		border-radius: var(--radius-sm, 4px);
@@ -444,26 +443,21 @@
 		cursor: pointer;
 		font-size: 0.8rem;
 	}
-
 	.btn:hover:not(:disabled) {
 		background: var(--color-surface-3, rgba(255, 255, 255, 0.1));
 	}
-
 	.btn-primary {
 		border-color: #3b82f6;
 		color: #3b82f6;
 	}
-
 	.btn-warn {
 		border-color: #f59e0b;
 		color: #f59e0b;
 	}
-
 	.btn:disabled {
 		opacity: 0.4;
 		cursor: not-allowed;
 	}
-
 	.stats {
 		margin-left: auto;
 		font-family: var(--font-mono, monospace);
@@ -472,7 +466,6 @@
 		text-align: right;
 		min-width: 200px;
 	}
-
 	.status-banner {
 		font-size: 0.82rem;
 		font-weight: 600;
@@ -488,50 +481,41 @@
 		background: rgba(239, 68, 68, 0.15);
 		color: #ef4444;
 	}
-
 	.chart-container {
 		position: relative;
 	}
-
 	.overlay {
 		position: absolute;
 		inset: 0;
 		pointer-events: none;
 	}
-
 	.legend {
 		display: flex;
 		gap: 1rem;
 		font-size: 0.75rem;
 		color: var(--color-text-muted);
 	}
-
 	.legend-item {
 		display: flex;
 		align-items: center;
 		gap: 0.35rem;
 	}
-
 	.swatch {
 		width: 12px;
 		height: 3px;
 		border-radius: 2px;
 	}
-
 	.swatch-start {
 		background: #f59e0b;
 	}
-
 	.swatch-end {
 		background: #10a381;
 	}
-
 	.swatch-grad {
 		background: #ef4444;
 		height: 12px;
 		width: 3px;
 	}
-
 	.spark-panel {
 		width: 100%;
 		max-width: 420px;

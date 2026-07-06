@@ -29,6 +29,7 @@
 		border-radius: 0 var(--radius-md) var(--radius-md) 0;
 		padding: 1rem 1.25rem;
 		margin-top: 1em;
+		margin-bottom: 1em;
 	}
 
 	.block-header {
