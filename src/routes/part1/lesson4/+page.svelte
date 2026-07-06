@@ -145,6 +145,14 @@
 		Ce résultat justifie que SGD suit globalement la bonne direction, malgré le bruit.
 	</TheoremBlock>
 
+	<Callout type="intuition">
+		Le calcul d'une seule étape de GD nécessite l'évaluation du gradient sur les <KatexInline
+			formula={`N`}
+		/>
+		données, tandis qu'un pas de SGD utilise un seul échantillon. Une itération de GD est donc
+		<KatexInline formula={`N`} /> fois plus coûteuse qu'une itération de SGD.
+	</Callout>
+
 	<InteractiveSection tag="Comparer">
 		<SGDvsGDComparison />
 	</InteractiveSection>

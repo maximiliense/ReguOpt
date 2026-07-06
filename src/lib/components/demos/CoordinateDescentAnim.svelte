@@ -3,18 +3,18 @@
 	 * Animates Coordinate Descent on a contour plot, showing the characteristic
 	 * zigzag pattern as it optimizes one coordinate at a time.
 	 */
+	import { onDestroy } from 'svelte';
 	import ContourPlot from '$lib/components/charts/ContourPlot.svelte';
 	import { paraboloid, ellipse } from '$lib/math/test-functions.js';
 
 	let containerWidth = $state(420);
 	let selectedFunc = $state('paraboloid');
-	let currentStep = $state(-1);
 	let playing = $state(false);
 	let animTimer: ReturnType<typeof setInterval> | null = null;
 
 	const funcOptions = [
-		{ key: 'paraboloid', label: 'Paraboloïde (x² + 4y²)', func: paraboloid },
-		{ key: 'ellipse', label: 'Ellipse (x²/4 + y²)', func: ellipse }
+		{ key: 'paraboloid', label: 'Paraboloïde (x² + 4y²)', func: paraboloid, color: '#8b5cf6' },
+		{ key: 'ellipse', label: 'Ellipse (x²/4 + y²)', func: ellipse, color: '#06b6d4' }
 	];
 
 	const opt = $derived(funcOptions.find((o) => o.key === selectedFunc)!);
@@ -29,7 +29,12 @@
 	const width = $derived(Math.min(containerWidth, 480));
 	const height = $derived(Math.round(width * aspect));
 
-	let trajectory: { x: number; y: number; fVal: number; coord: number }[] = $state([]);
+	interface TrajPoint {
+		x: number;
+		y: number;
+		fVal: number;
+		coord: number; // -1 = start, 0 = optimized along x, 1 = optimized along y
+	}
 
 	function projX(x: number): number {
 		const pad = 36;
@@ -40,17 +45,14 @@
 		return pad + ((domain[1][1] - y) / (domain[1][1] - domain[1][0])) * (height - pad * 2);
 	}
 
-	// Simple line search along one coordinate
 	function optimizeCoordinate(x: number, y: number, coord: number): { x: number; y: number } {
 		const h = Math.max(1e-4, coord === 0 ? Math.abs(x) * 0.2 : Math.abs(y) * 0.2);
 
-		// Determine descent direction
 		if (coord === 0) {
 			const fPos = func.f(x + h, y);
 			const fNeg = func.f(x - h, y);
-			let dir = fPos < fNeg ? 1 : -1;
+			const dir = fPos < fNeg ? 1 : -1;
 
-			// Golden section search along x
 			let lo: number, hi: number;
 			if (dir > 0) {
 				lo = 0;
@@ -60,7 +62,7 @@
 				hi = 0;
 			}
 
-			for (let _ = 0; _ < 30; _) {
+			for (let iter = 0; iter < 30; iter++) {
 				const range = hi - lo;
 				if (Math.abs(range) < 1e-14) break;
 				const phiInv = 0.618;
@@ -76,7 +78,7 @@
 		} else {
 			const fPos = func.f(x, y + h);
 			const fNeg = func.f(x, y - h);
-			let dir = fPos < fNeg ? 1 : -1;
+			const dir = fPos < fNeg ? 1 : -1;
 
 			let lo: number, hi: number;
 			if (dir > 0) {
@@ -87,7 +89,7 @@
 				hi = 0;
 			}
 
-			for (let _ = 0; _ < 30; _) {
+			for (let iter = 0; iter < 30; iter++) {
 				const range = hi - lo;
 				if (Math.abs(range) < 1e-14) break;
 				const phiInv = 0.618;
@@ -103,186 +105,198 @@
 		}
 	}
 
-	function computeFullTrajectory() {
-		trajectory = [];
+	function computeFullTrajectory(): TrajPoint[] {
+		const traj: TrajPoint[] = [];
 		const startX = -2.5,
 			startY = 2.0;
 		let x = startX,
 			y = startY;
-		trajectory.push({ x, y, fVal: func.f(x, y), coord: -1 });
+		traj.push({ x, y, fVal: func.f(x, y), coord: -1 });
 
 		for (let k = 0; k < 30; k++) {
-			// Alternate between optimizing x and y
-			const coord = k % 2 === 0 ? 0 : 1; // Even steps optimize x, odd steps optimize y
+			const coord = k % 2 === 0 ? 0 : 1;
 			const result = optimizeCoordinate(x, y, coord);
 
-			x = result.x;
-			y = result.y;
-
-			// Clamp to domain
-			x = Math.max(domain[0][0], Math.min(domain[0][1], x));
-			y = Math.max(domain[1][0], Math.min(domain[1][1], y));
+			x = Math.max(domain[0][0], Math.min(domain[0][1], result.x));
+			y = Math.max(domain[1][0], Math.min(domain[1][1], result.y));
 
 			const fVal = func.f(x, y);
-			if (isNaN(fVal) || !isFinite(fVal)) break;
+			if (!Number.isFinite(fVal)) break;
 
-			trajectory.push({ x, y, fVal, coord });
+			traj.push({ x, y, fVal, coord });
 
-			// Check convergence
 			const g = func.grad(x, y);
 			if (Math.sqrt(g[0] ** 2 + g[1] ** 2) < 1e-6) break;
 		}
+		return traj;
 	}
 
-	let visibleSteps = $state(0);
+	const trajectory = $derived(computeFullTrajectory());
+
+	// ── Single source of truth for "how far are we" — this replaces the old
+	// currentStep / stepIdx / visibleSteps trio, which is exactly what caused
+	// Reset to show the full path, Step to jump backward after Reset, and
+	// Play to silently do nothing on a second run once the indices fell out
+	// of sync with each other. ──
+	let step = $state(0);
+	const maxStep = $derived(trajectory.length - 1);
+	const isDone = $derived(step >= maxStep);
 
 	function reset() {
 		stopAnim();
-		currentStep = -1;
-		computeFullTrajectory();
-		visibleSteps = trajectory.length - 1;
+		step = 0;
 	}
-
-	function animReset() {
-		stopAnim();
-		computeFullTrajectory();
-		visibleSteps = 0;
-	}
-
-	let stepIdx = $state(0);
 
 	function stepForward() {
-		if (stepIdx >= trajectory.length - 1) return;
-		stepIdx++;
-		visibleSteps = stepIdx;
-		currentStep = stepIdx;
+		if (step >= maxStep) return;
+		step++;
 	}
 
 	function play() {
 		if (playing) return;
-		if (stepIdx === 0 && visibleSteps === 0) animReset();
+		if (isDone) reset();
 		playing = true;
 		animTimer = setInterval(() => {
 			stepForward();
-			if (stepIdx >= trajectory.length - 1) stopAnim();
+			if (step >= maxStep) stopAnim();
 		}, 350);
 	}
-
 	function pause() {
 		stopAnim();
 	}
-
 	function stopAnim() {
 		if (animTimer !== null) clearInterval(animTimer);
 		animTimer = null;
 		playing = false;
 	}
+	onDestroy(stopAnim);
 
-	function handleFuncChange(newKey: string) {
-		selectedFunc = newKey;
-		reset();
-		stepIdx = 0;
-		visibleSteps = 0;
+	function selectFunc(key: string) {
+		stopAnim();
+		selectedFunc = key;
+		step = 0;
 	}
 
-	// Compute segments with alternating colors for x-steps and y-steps
 	function trajectorySegments(): { d: string; color: string }[] {
 		if (trajectory.length < 2) return [];
 		const segs = [];
-		for (let i = 1; i <= visibleSteps && i < trajectory.length; i++) {
+		for (let i = 1; i <= step && i < trajectory.length; i++) {
 			segs.push({
 				d: `M${projX(trajectory[i - 1].x).toFixed(1)},${projY(trajectory[i - 1].y).toFixed(1)} L${projX(trajectory[i].x).toFixed(1)},${projY(trajectory[i].y).toFixed(1)}`,
-				color: trajectory[i].coord === 0 ? '#8b5cf6' : '#06b6d4' // Purple for x, Cyan for y
+				color: trajectory[i].coord === 0 ? '#8b5cf6' : '#06b6d4'
 			});
 		}
 		return segs;
 	}
 
-	const currentFVal = $derived(
-		trajectory.length > visibleSteps ? trajectory[visibleSteps].fVal.toFixed(4) : '—'
-	);
+	const currentPoint = $derived(trajectory[Math.min(step, maxStep)]);
+	const currentFVal = $derived(currentPoint ? currentPoint.fVal.toFixed(4) : '—');
 
-	reset();
+	// Guide line showing which axis is currently being scanned — makes the
+	// "optimize one coordinate at a time" mechanic visible, not just implied
+	// by the zig-zag color.
+	const activeAxisLine = $derived.by(() => {
+		if (!currentPoint || currentPoint.coord < 0) return null;
+		if (currentPoint.coord === 0) {
+			return {
+				x1: projX(domain[0][0]),
+				y1: projY(currentPoint.y),
+				x2: projX(domain[0][1]),
+				y2: projY(currentPoint.y),
+				color: '#8b5cf6'
+			};
+		}
+		return {
+			x1: projX(currentPoint.x),
+			y1: projY(domain[1][0]),
+			x2: projX(currentPoint.x),
+			y2: projY(domain[1][1]),
+			color: '#06b6d4'
+		};
+	});
 </script>
 
 <div class="demo-wrap" bind:clientWidth={containerWidth}>
-	<!-- Controls -->
-	<div class="controls">
-		<label for="func-select">Fonction :</label>
-		<select
-			id="func-select"
-			value={selectedFunc}
-			onchange={(e) => handleFuncChange(e.currentTarget.value)}
-		>
-			{#each funcOptions as o}
-				<option value={o.key}>{o.label}</option>
-			{/each}
-		</select>
+	<div class="options-row">
+		{#each funcOptions as o}
+			<button
+				class:active={selectedFunc === o.key}
+				style:--opt-color={o.color}
+				onclick={() => selectFunc(o.key)}
+			>
+				<span class="dot" style:background={o.color}></span>
+				{o.label}
+			</button>
+		{/each}
+	</div>
 
+	<div class="controls">
 		<span class="coord-tag coord-x">x (violet)</span>
 		<span class="coord-tag coord-y">y (cyan)</span>
 	</div>
 
-	<!-- Transport -->
 	<div class="transport">
 		<button class="btn" onclick={reset}>⟲ Reset</button>
-		<button class="btn" onclick={stepForward} disabled={trajectory.length <= visibleSteps + 1}
-			>▶ Step</button
-		>
+		<button class="btn" onclick={stepForward} disabled={playing || isDone}>▶ Step</button>
 		{#if playing}
 			<button class="btn btn-warn" onclick={pause}>⏸ Pause</button>
 		{:else}
-			<button class="btn btn-primary" onclick={play}>⏵ Play</button>
+			<button class="btn btn-primary" onclick={play} disabled={isDone}>⏵ Play</button>
 		{/if}
 
 		<div class="stats">
-			k = {Math.max(0, currentStep + 1)} | f = {currentFVal}
-			{#if trajectory[visibleSteps] && trajectory[visibleSteps].coord >= 0}
-				<span> — coord: {trajectory[visibleSteps].coord === 0 ? 'x' : 'y'}</span>
+			k = {step} | f = {currentFVal}
+			{#if currentPoint && currentPoint.coord >= 0}
+				<span> — coord: {currentPoint.coord === 0 ? 'x' : 'y'}</span>
 			{/if}
 		</div>
 	</div>
 
-	<!-- Chart with overlay -->
-	<div class="chart-container">
+	<div class="chart-container" style:width="{width}px" style:height="{height}px">
 		<ContourPlot f={func.f} {domain} {width} {height} gridSize={60} />
 		<svg class="overlay" {width} {height} viewBox={`0 0 ${width} ${height}`}>
+			{#if activeAxisLine}
+				<line
+					x1={activeAxisLine.x1}
+					y1={activeAxisLine.y1}
+					x2={activeAxisLine.x2}
+					y2={activeAxisLine.y2}
+					stroke={activeAxisLine.color}
+					stroke-width="1"
+					stroke-dasharray="4 3"
+					opacity="0.4"
+				/>
+			{/if}
+
 			{#each trajectorySegments() as seg}
 				<path d={seg.d} fill="none" stroke={seg.color} stroke-width="2.5" stroke-linecap="round" />
 			{/each}
 
-			<!-- Dots at each vertex -->
 			{#each trajectory as pt, i (i)}
-				{#if i <= visibleSteps && i < trajectory.length}
+				{#if i <= step}
 					<circle
 						cx={projX(pt.x)}
 						cy={projY(pt.y)}
-						r={i === visibleSteps ? 5 : 3}
+						r={i === step ? 5 : 3}
 						fill={pt.coord === -1 ? '#f59e0b' : pt.coord === 0 ? '#8b5cf6' : '#06b6d4'}
-						stroke={i === visibleSteps ? '#fff' : 'none'}
+						stroke={i === step ? '#fff' : 'none'}
+						stroke-width="1.5"
 					/>
 				{/if}
 			{/each}
-
-			<!-- Arrowhead defs -->
-			<defs>
-				<polygon id="arrow-x" points="0,0 -8,-3 -3,0 -8,3" fill="#8b5cf6" />
-				<polygon id="arrow-y" points="0,0 -8,-3 -3,0 -8,3" fill="#06b6d4" />
-			</defs>
 		</svg>
 	</div>
 
-	<!-- Legend -->
 	<div class="legend">
 		<span class="legend-item"><span class="swatch swatch-x"></span>Pas en x (optimiser θ₁)</span>
 		<span class="legend-item"><span class="swatch swatch-y"></span>Pas en y (optimiser θ₂)</span>
 		<span class="legend-item"><span class="swatch swatch-start"></span>Début</span>
 	</div>
 
-	<!-- Description -->
 	<div class="description">
 		CD alterne l'optimisation selon chaque coordonnée. Sur cette fonction séparable, CD converge
-		très vite car chaque pas minimise exactement la restriction le long d'un axe.
+		très vite car chaque pas minimise exactement la restriction le long d'un axe (la ligne
+		pointillée montre l'axe en cours d'optimisation).
 	</div>
 </div>
 
@@ -295,6 +309,43 @@
 		width: 100%;
 	}
 
+	.options-row {
+		display: flex;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+		justify-content: center;
+	}
+	.options-row button {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		padding: 0.3rem 0.75rem;
+		border-radius: 999px;
+		border: 1px solid var(--color-border);
+		background: transparent;
+		cursor: pointer;
+		font-size: 0.8rem;
+		color: var(--color-text, inherit);
+		transition:
+			background 0.15s ease,
+			color 0.15s ease,
+			border-color 0.15s ease;
+	}
+	.options-row button .dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		display: inline-block;
+	}
+	.options-row button.active {
+		background: var(--opt-color);
+		color: white;
+		border-color: var(--opt-color);
+	}
+	.options-row button.active .dot {
+		background: white !important;
+	}
+
 	.controls {
 		display: flex;
 		align-items: center;
@@ -304,22 +355,12 @@
 		justify-content: center;
 	}
 
-	select {
-		padding: 0.3rem 0.5rem;
-		border-radius: var(--radius-sm, 4px);
-		border: 1px solid var(--color-border);
-		background: var(--color-surface-2, transparent);
-		color: inherit;
-		font-size: 0.8rem;
-	}
-
 	.coord-tag {
 		font-family: var(--font-mono, monospace);
 		font-size: 0.72rem;
 		padding: 1px 6px;
 		border-radius: 3px;
 	}
-
 	.coord-x {
 		color: #8b5cf6;
 	}
@@ -345,11 +386,9 @@
 		cursor: pointer;
 		font-size: 0.8rem;
 	}
-
 	.btn:hover:not(:disabled) {
 		background: var(--color-surface-3, rgba(255, 255, 255, 0.1));
 	}
-
 	.btn-primary {
 		border-color: #3b82f6;
 		color: #3b82f6;
@@ -358,7 +397,6 @@
 		border-color: #f59e0b;
 		color: #f59e0b;
 	}
-
 	.btn:disabled {
 		opacity: 0.4;
 		cursor: not-allowed;
@@ -374,7 +412,6 @@
 	.chart-container {
 		position: relative;
 	}
-
 	.overlay {
 		position: absolute;
 		inset: 0;
@@ -389,13 +426,11 @@
 		flex-wrap: wrap;
 		justify-content: center;
 	}
-
 	.legend-item {
 		display: flex;
 		align-items: center;
 		gap: 0.35rem;
 	}
-
 	.swatch {
 		width: 14px;
 		height: 3px;
