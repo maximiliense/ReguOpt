@@ -5,10 +5,40 @@
 	import KatexInline from '$lib/components/narrative/KatexInline.svelte';
 	import { getPageByPath, getNextPage, getPrevPage } from '$lib/navigation.js';
 	import KatexBlock from '$lib/components/narrative/KatexBlock.svelte';
+	import TableOfContents from '$lib/components/narrative/TableOfContents.svelte';
 
 	const meta = getPageByPath('/part1/exercices');
 	const prevMeta = $derived(getPrevPage(meta?.index ?? 0));
 	const nextMeta = $derived(getNextPage(meta?.index ?? 0));
+
+	// ── Table of Contents ──
+	interface TocEntry {
+		id: string;
+		label: string;
+		description?: string;
+		color: 'epistemic' | 'positive' | 'neutral' | 'belief' | 'surprise' | 'agent';
+	}
+
+	const tocEntries: TocEntry[] = [
+		{
+			id: 'conditions-minimum',
+			label: "Conditions d'un minimum",
+			description: '20 exercices — minima locaux/globaux, CNO, CSSO, convexité, coercivité',
+			color: 'epistemic'
+		},
+		{
+			id: 'fonctions-ml',
+			label: 'Fonctions en Machine Learning',
+			description: '20 exercices — propriétés conservées, Ridge, Lasso, logistique',
+			color: 'positive'
+		},
+		{
+			id: 'descente-gradient-acceleration',
+			label: 'Descente de gradient et accélération',
+			description: '20 exercices — GD, Momentum, Nesterov, taux de convergence',
+			color: 'surprise'
+		}
+	];
 
 	// ── Formula variables (stored in script so Svelte never parses backslashes) ──
 
@@ -141,7 +171,9 @@
 	next={nextMeta}
 >
 	<TheorySection>
-		<h2>Conditions d'un minimum</h2>
+		<TableOfContents entries={tocEntries} />
+
+		<h2 id="conditions-minimum">Conditions d'un minimum</h2>
 
 		<p>
 			Cette section propose vingt exercices couvrant l'ensemble des notions vues dans la leçon :
@@ -547,7 +579,14 @@
 				et expliquez en quoi cela ne contredit pas le résultat de l'exercice 2.11.
 			</p>
 		</ExercisePanel>
-		<h2>Fonctions en ML</h2>
+		<h2 id="fonctions-ml">Fonctions en ML</h2>
+
+		<p>
+			Cette section explore vingt exercices sur les propriétés des fonctions rencontrées en Machine
+			Learning : conservation de la convexité par somme et moyenne, calcul de gradients et
+			Hessiennes, coercivité, et régularisation Ridge/Lasso. Chaque exercice est accompagné d'une
+			solution détaillée, accessible en cliquant sur « Voir la solution ».
+		</p>
 
 		<ExercisePanel number="2.1" title="Convexité d'une combinaison linéaire">
 			<p>
@@ -1550,7 +1589,15 @@ L_i.
 				</ul>
 			{/snippet}
 		</ExercisePanel>
-		<h2>Descente de gradient et accélération</h2>
+		<h2 id="descente-gradient-acceleration">Descente de gradient et accélération</h2>
+
+		<p>
+			Cette section propose vingt exercices couvrant les algorithmes d'optimisation de premier ordre
+			: descente de gradient classique, recherche linéaire, Momentum de Polyak, accélération de
+			Nesterov (NAG), et analyse des taux de convergence. Chaque exercice est accompagné d'une
+			solution détaillée, accessible en cliquant sur « Voir la solution ».
+		</p>
+
 		<ExercisePanel number="3.1" title="Calcul explicite d'un pas de descente de gradient en 1D">
 			{#snippet solution()}
 				<p>
