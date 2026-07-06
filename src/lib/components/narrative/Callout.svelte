@@ -2,7 +2,7 @@
 	import type { Snippet } from 'svelte';
 
 	interface Props {
-		type: 'insight' | 'warning' | 'definition' | 'intuition' | 'summary';
+		type: 'insight' | 'warning' | 'definition' | 'intuition' | 'summary' | 'proof';
 		title?: string;
 		children?: Snippet;
 	}
@@ -44,6 +44,13 @@
 			border: 'rgba(167, 139, 250, 0.3)',
 			icon: '📌',
 			defaultTitle: 'Retenir'
+		},
+		proof: {
+			color: 'var(--color-positive)',
+			bg: 'rgba(16, 185, 129, 0.06)',
+			border: 'rgba(16, 185, 129, 0.25)',
+			icon: '📝',
+			defaultTitle: 'Démonstration'
 		}
 	} as const;
 

@@ -1,4 +1,7 @@
 <script lang="ts">
+	import Slider from '$lib/components/controls/Slider.svelte';
+	import SliderGrid from '$lib/components/layout/SliderGrid.svelte';
+
 	/** 1D function to test convexity */
 	interface Func1D {
 		label: string;
@@ -16,10 +19,11 @@
 	let ptX = $state(-1.2);
 	let ptY = $state(0.8);
 	let lambda = $state(0.5);
+	let playing = $state(false);
 
 	const cur = $derived(funcs[selectedIndex]);
 
-	// Compute convexity inequality values
+	// Compute convexity inequality values at the current lambda
 	const f_x = $derived(cur.f(ptX));
 	const f_y = $derived(cur.f(ptY));
 
@@ -29,6 +33,21 @@
 
 	const isConvex = $derived(funcAtInterp <= chordVal + 1e-6);
 	const diff = $derived(chordVal - funcAtInterp); // positive = convex, negative = not convex
+
+	// ── Whole-segment verdict: convexity requires the inequality for EVERY λ ∈ [0,1],
+	// not just the one currently selected. Sample densely across the segment. ──
+	const M = 60;
+	const segmentSamples = $derived.by(() => {
+		return Array.from({ length: M + 1 }, (_, i) => {
+			const t = i / M; // this is "1 - lambda" in the standard parametrization below
+			const x = ptX + t * (ptY - ptX);
+			const chord = (1 - t) * f_x + t * f_y;
+			const actual = cur.f(x);
+			return { t, x, chord, actual, gap: chord - actual };
+		});
+	});
+
+	const segmentHoldsEverywhere = $derived(segmentSamples.every((s) => s.gap >= -1e-6));
 
 	// SVG layout
 	const svgW = 480;
@@ -88,12 +107,83 @@
 	const interpOnCurve_y = $derived(projY(funcAtInterp));
 	const interpOnChord_y = $derived(projY(chordVal));
 
-	function sliderHandler(name: string, e: Event) {
-		const target = e.target as HTMLInputElement;
-		const v = parseFloat(target.value);
-		if (name === 'x') ptX = v;
-		else if (name === 'y') ptY = v;
-		else lambda = v;
+	// ── Fill polygon: chord edge forward + curve edge backward, split into
+	// green (convex-holding) and red (violation) bands based on local gap sign ──
+	const fillBands = $derived.by(() => {
+		const bands: { path: string; color: string }[] = [];
+		let currentSign: number | null = null;
+		let bandPoints: { xSvg: number; chordY: number; curveY: number }[] = [];
+
+		function flush() {
+			if (bandPoints.length < 2) return;
+			const top = bandPoints
+				.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.xSvg.toFixed(1)},${p.chordY.toFixed(1)}`)
+				.join(' ');
+			const bottom = [...bandPoints]
+				.reverse()
+				.map((p) => `L${p.xSvg.toFixed(1)},${p.curveY.toFixed(1)}`)
+				.join(' ');
+			bands.push({
+				path: `${top} ${bottom} Z`,
+				color: currentSign! >= 0 ? '#22c55e' : '#ef4444'
+			});
+		}
+
+		for (const s of segmentSamples) {
+			const sign = s.gap >= 0 ? 1 : -1;
+			if (currentSign !== null && sign !== currentSign) {
+				// close out previous band, start new one sharing this point for continuity
+				flush();
+				bandPoints = [bandPoints[bandPoints.length - 1]];
+			}
+			currentSign = sign;
+			bandPoints.push({
+				xSvg: projX(s.x),
+				chordY: projY(s.chord),
+				curveY: projY(s.actual)
+			});
+		}
+		flush();
+		return bands;
+	});
+
+	// ── Autoplay: sweep lambda back and forth ──
+	let rafId: number | null = null;
+	let direction = -1; // moves lambda downward first (t upward)
+
+	function playTick() {
+		const speed = 0.01;
+		let next = lambda + direction * speed;
+		if (next <= 0) {
+			next = 0;
+			direction = 1;
+		} else if (next >= 1) {
+			next = 1;
+			direction = -1;
+		}
+		lambda = next;
+		rafId = requestAnimationFrame(playTick);
+	}
+
+	function togglePlay() {
+		playing = !playing;
+		if (playing) {
+			rafId = requestAnimationFrame(playTick);
+		} else if (rafId) {
+			cancelAnimationFrame(rafId);
+			rafId = null;
+		}
+	}
+
+	function stopPlay() {
+		if (rafId) cancelAnimationFrame(rafId);
+		rafId = null;
+		playing = false;
+	}
+
+	function selectFunc(i: number) {
+		stopPlay();
+		selectedIndex = i;
 	}
 </script>
 
@@ -106,6 +196,11 @@
 		role="img"
 		aria-label="Démo de convexité"
 	>
+		<!-- Fill bands: green where chord >= curve (convexity holds), red where it fails -->
+		{#each fillBands as band, i (i)}
+			<path d={band.path} fill={band.color} opacity="0.18" stroke="none" />
+		{/each}
+
 		<!-- Grid ticks -->
 		{#each [-2, -1, 0, 1, 2] as tick}
 			<text
@@ -184,63 +279,45 @@
 	<!-- Badge showing convexity verdict -->
 	<div class="badge-wrap">
 		<span class={`verdict ${isConvex ? 'convex' : 'non-convex'}`}>
-			{isConvex ? '✓ Convexe' : '✗ Pas convexe'} en cet intervalle
+			{isConvex ? '✓ Convexe' : '✗ Pas convexe'} en λ = {lambda.toFixed(2)}
 		</span>
 		<span class="formula"
 			>f(λx+(1−λ)y) = {funcAtInterp.toFixed(3)} vs λf(x)+(1−λ)f(y) = {chordVal.toFixed(3)}</span
 		>
 		<span class="diff" style:color={isConvex ? '#22c55e' : '#ef4444'}>Δ = {diff.toFixed(3)}</span>
+
+		<span class={`segment-verdict ${segmentHoldsEverywhere ? 'convex' : 'non-convex'}`}>
+			{segmentHoldsEverywhere
+				? '✓ La corde reste au-dessus de la courbe pour tout λ ∈ [0,1] sur ce segment'
+				: '✗ La courbe dépasse la corde pour au moins un λ sur ce segment (zone rouge)'}
+		</span>
 	</div>
 
 	<!-- Controls -->
+	<div class="options-row">
+		{#each funcs as fn, i}
+			<button class:active={selectedIndex === i} onclick={() => selectFunc(i)}>
+				{fn.label}
+			</button>
+		{/each}
+	</div>
+
 	<div class="panel">
-		<div class="row">
-			<span class="label">Fonction :</span>
-			<select
-				value={selectedIndex}
-				onchange={(e) => (selectedIndex = parseInt((e.target as HTMLSelectElement).value))}
-			>
-				{#each funcs as fn, i}
-					<option value={i}>{fn.label}</option>
-				{/each}
-			</select>
-		</div>
+		<SliderGrid>
+			<div class="group">
+				<div class="group-title">Segment [x, y]</div>
+				<Slider bind:value={ptX} min={xMin} max={xMax} step={0.01} label="x" />
+				<Slider bind:value={ptY} min={xMin} max={xMax} step={0.01} label="y" />
+			</div>
+			<div class="group">
+				<div class="group-title">Interpolation</div>
+				<Slider bind:value={lambda} min={0} max={1} step={0.01} label="λ" />
+			</div>
+		</SliderGrid>
 
-		<div class="row">
-			<span class="label">x = {ptX.toFixed(2)}</span>
-			<input
-				type="range"
-				min={xMin}
-				max={xMax}
-				step="0.01"
-				value={ptX}
-				oninput={(e) => sliderHandler('x', e)}
-			/>
-		</div>
-
-		<div class="row">
-			<span class="label">y = {ptY.toFixed(2)}</span>
-			<input
-				type="range"
-				min={xMin}
-				max={xMax}
-				step="0.01"
-				value={ptY}
-				oninput={(e) => sliderHandler('y', e)}
-			/>
-		</div>
-
-		<div class="row">
-			<span class="label">λ = {lambda.toFixed(2)}</span>
-			<input
-				type="range"
-				min="0"
-				max="1"
-				step="0.01"
-				value={lambda}
-				oninput={(e) => sliderHandler('λ', e)}
-			/>
-		</div>
+		<button class="play-btn" class:playing onclick={togglePlay}>
+			{playing ? '⏸ Pause' : '▶ Balayer λ automatiquement'}
+		</button>
 	</div>
 
 	<!-- Legend -->
@@ -252,6 +329,11 @@
 				class="swatch"
 				style="background:#22c55e;border-radius:50%;width:8px;height:8px;display:inline-block;"
 			></span> f(λx+(1-λ)y) — valeur réelle</span
+		>
+		<span
+			><span class="swatch fill-swatch" style="background:#22c55e"></span> Convexité respectée</span
+		>
+		<span><span class="swatch fill-swatch" style="background:#ef4444"></span> Convexité violée</span
 		>
 	</div>
 </div>
@@ -276,6 +358,7 @@
 		align-items: center;
 		gap: 0.25rem;
 		font-size: 0.85rem;
+		text-align: center;
 	}
 
 	.verdict {
@@ -293,6 +376,13 @@
 		color: #ef4444;
 	}
 
+	.segment-verdict {
+		font-size: 0.78rem;
+		font-weight: 600;
+		padding: 0.2rem 0.7rem;
+		border-radius: var(--radius-sm, 4px);
+	}
+
 	.formula {
 		font-family: var(--font-mono);
 		font-size: 0.78rem;
@@ -301,39 +391,70 @@
 		font-weight: 700;
 	}
 
+	.options-row {
+		display: flex;
+		gap: 0.4rem;
+		flex-wrap: wrap;
+		justify-content: center;
+	}
+
+	.options-row button {
+		padding: 0.3rem 0.65rem;
+		border-radius: 999px;
+		border: 1px solid var(--color-border);
+		background: transparent;
+		cursor: pointer;
+		font-size: 0.78rem;
+		color: var(--color-text, inherit);
+		transition:
+			background 0.15s ease,
+			color 0.15s ease,
+			border-color 0.15s ease;
+	}
+	.options-row button.active {
+		background: var(--color-belief, #3b82f6);
+		color: white;
+		border-color: var(--color-belief, #3b82f6);
+	}
+
 	.panel {
 		width: 100%;
 		max-width: 480px;
 		display: flex;
 		flex-direction: column;
-		gap: 0.4rem;
+		gap: 0.6rem;
 		padding: 0.75rem;
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-md, 8px);
 		background: var(--color-surface-2, transparent);
 	}
 
-	.row {
+	.group {
 		display: flex;
-		align-items: center;
+		flex-direction: column;
 		gap: 0.5rem;
-		font-size: 0.875rem;
+	}
+	.group-title {
+		font-size: 0.75rem;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--color-text-muted);
 	}
 
-	.label {
-		min-width: fit-content;
-	}
-
-	select {
-		padding: 0.2rem 0.4rem;
-		border-radius: var(--radius-sm, 4px);
+	.play-btn {
+		align-self: center;
+		padding: 0.3rem 0.85rem;
+		border-radius: 999px;
 		border: 1px solid var(--color-border);
 		background: transparent;
-		color: inherit;
+		cursor: pointer;
+		font-size: 0.78rem;
+		color: var(--color-text, inherit);
 	}
-
-	input[type='range'] {
-		flex: 1;
+	.play-btn.playing {
+		background: #3b82f6;
+		color: white;
+		border-color: #3b82f6;
 	}
 
 	.legend {
@@ -351,5 +472,11 @@
 		height: 3px;
 		border-radius: 2px;
 		vertical-align: middle;
+	}
+	.fill-swatch {
+		width: 10px;
+		height: 10px;
+		border-radius: 2px;
+		opacity: 0.5;
 	}
 </style>

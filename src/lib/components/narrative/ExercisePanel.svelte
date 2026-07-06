@@ -1,31 +1,38 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { page } from '$app/stores';
 
 	interface Props {
 		number?: string;
 		title?: string;
 		children: Snippet;
 		solution?: Snippet;
+		/** Optional snippet for rich-rendered titles (KaTeX, etc.). Falls back to `title` prop. */
+		titleSnippet?: Snippet;
 	}
 
-	let { number, title = 'Exercice', children, solution }: Props = $props();
+	let { number, title = 'Exercice', children, solution, titleSnippet }: Props = $props();
 
-	let showSolution = $state(false);
-
-	const label = $derived(number ? `${title} ${number}` : title);
+	const isTeacherMode = $derived($page.url.searchParams.get('teacher') === 'true');
 </script>
 
 <aside class="exercise-block">
 	<div class="block-header">
 		<span class="block-icon" aria-hidden="true">✏️</span>
-		<span class="block-title">{label}</span>
+		<span class="block-title">
+			{#if titleSnippet}
+				{@render titleSnippet()}
+			{:else}
+				{number ? `${title} ${number}` : title}
+			{/if}
+		</span>
 	</div>
 	<div class="block-body">
 		{@render children()}
 	</div>
 
-	{#if solution}
-		<details class="solution-toggle" bind:open={showSolution}>
+	{#if solution && isTeacherMode}
+		<details class="solution-toggle">
 			<summary class="solution-summary">Voir la solution ▼</summary>
 			<div class="solution-body">
 				{@render solution()}

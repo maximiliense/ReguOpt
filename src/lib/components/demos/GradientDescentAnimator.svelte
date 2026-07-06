@@ -1,5 +1,8 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import ContourPlot from '$lib/components/charts/ContourPlot.svelte';
+	import Slider from '$lib/components/controls/Slider.svelte';
+	import SliderGrid from '$lib/components/layout/SliderGrid.svelte';
 	import { paraboloid, rosenbrock, ellipse } from '$lib/math/test-functions.js';
 	import { gdStep } from '$lib/math/gradient-descent.js';
 
@@ -9,6 +12,7 @@
 		func: typeof paraboloid;
 		defaultAlpha: number;
 		startPoint: [number, number];
+		color: string;
 	}
 
 	const funcOptions: FuncOption[] = [
@@ -17,29 +21,33 @@
 			label: 'Paraboloïde (x² + 4y²)',
 			func: paraboloid,
 			defaultAlpha: 0.1,
-			startPoint: [-2.5, 2]
+			startPoint: [-2.5, 2],
+			color: '#3b82f6'
 		},
 		{
 			key: 'rosenbrock',
 			label: 'Rosenbrock ((1−x)² + 100(y−x²)²)',
 			func: rosenbrock,
 			defaultAlpha: 0.001,
-			startPoint: [-1.5, 2]
+			startPoint: [-1.5, 2],
+			color: '#ef4444'
 		},
 		{
 			key: 'ellipse',
 			label: 'Ellipse (x²/4 + y²)',
 			func: ellipse,
 			defaultAlpha: 0.3,
-			startPoint: [-3, -3]
+			startPoint: [-3, -3],
+			color: '#10b981'
 		}
 	];
 
 	let selectedKey = $state('paraboloid');
 	let containerWidth = $state(420);
-	let alpha = $state(paraboloid.domain ? 0.1 : 0.1);
-	let currentStep = $state(-1); // -1 means not started yet
+	let alpha = $state(0.1);
+	let stepIntervalMs = $state(150);
 	let playing = $state(false);
+	let diverged = $state(false);
 	let animTimer: ReturnType<typeof setInterval> | null = null;
 
 	const opt = $derived(funcOptions.find((o) => o.key === selectedKey)!);
@@ -54,50 +62,55 @@
 	const height = $derived(Math.round(width * aspect));
 
 	let trajectory: { x: number; y: number; fVal: number }[] = $state([]);
-	let currentGrad: [number, number] | null = $state(null);
+
+	// ── Everything about "where are we now" is DERIVED from trajectory, never
+	// tracked as separate mutable state — this is what removes the class of bug
+	// where a manually-maintained counter (the old currentStep) falls out of
+	// sync with the data it's supposed to describe. ──
+	const lastPoint = $derived(trajectory[trajectory.length - 1] ?? null);
+	const lastGrad = $derived.by((): [number, number] => {
+		if (!lastPoint) return [0, 0];
+		return func.grad(lastPoint.x, lastPoint.y);
+	});
+	const lastGradNorm = $derived(Math.hypot(lastGrad[0], lastGrad[1]));
+	const isConverged = $derived(lastGradNorm < 1e-3);
+	const stepCount = $derived(Math.max(0, trajectory.length - 1));
 
 	function reset() {
 		stopAnim();
-		currentStep = -1;
+		diverged = false;
 		const sp = opt.startPoint;
 		trajectory = [{ x: sp[0], y: sp[1], fVal: func.f(sp[0], sp[1]) }];
-		updateGrad();
 	}
 
 	function step() {
-		if (currentStep < 0) return;
-		const last = trajectory[trajectory.length - 1];
-		const [nx, ny] = gdStep(last.x, last.y, func.grad, alpha);
+		if (isConverged || diverged || !lastPoint) return;
+		const [nx, ny] = gdStep(lastPoint.x, lastPoint.y, func.grad, alpha);
 
-		// Clamp to domain for safety
 		const clampedX = Math.max(domain[0][0], Math.min(domain[0][1], nx));
 		const clampedY = Math.max(domain[1][0], Math.min(domain[1][1], ny));
 		const fVal = func.f(clampedX, clampedY);
 
-		if (isNaN(fVal) || !isFinite(fVal)) {
+		if (!Number.isFinite(fVal)) {
+			diverged = true;
 			stopAnim();
 			return;
 		}
 
-		trajectory.push({ x: clampedX, y: clampedY, fVal });
-		currentStep++;
-		updateGrad();
-	}
-
-	function updateGrad() {
-		if (trajectory.length === 0) return;
-		const last = trajectory[trajectory.length - 1];
-		const g = func.grad(last.x, last.y);
-		const norm = Math.sqrt(g[0] ** 2 + g[1] ** 2);
-		currentGrad = norm < 1e-12 ? null : g;
-		if (norm < 1e-6) stopAnim();
+		trajectory = [...trajectory, { x: clampedX, y: clampedY, fVal }];
 	}
 
 	function play() {
 		if (playing) return;
-		if (currentStep < 0) reset();
+		if (trajectory.length === 0) reset();
 		playing = true;
-		animTimer = setInterval(() => step(), 200);
+		animTimer = setInterval(() => {
+			if (isConverged || diverged) {
+				stopAnim();
+				return;
+			}
+			step();
+		}, stepIntervalMs);
 	}
 
 	function pause() {
@@ -110,15 +123,33 @@
 		playing = false;
 	}
 
-	function handleFuncChange(newKey: string) {
-		selectedKey = newKey;
-		const o = funcOptions.find((opt) => opt.key === newKey)!;
+	// Restart the interval at the new speed if currently playing.
+	$effect(() => {
+		void stepIntervalMs;
+		if (playing) {
+			if (animTimer !== null) clearInterval(animTimer);
+			animTimer = setInterval(() => {
+				if (isConverged || diverged) {
+					stopAnim();
+					return;
+				}
+				step();
+			}, stepIntervalMs);
+		}
+	});
+
+	function selectFunc(key: string) {
+		stopAnim();
+		selectedKey = key;
+		const o = funcOptions.find((o2) => o2.key === key)!;
 		alpha = o.defaultAlpha;
 		reset();
 	}
 
 	// Initialize on load
 	reset();
+
+	onDestroy(stopAnim);
 
 	function projX(x: number): number {
 		const pad = 36;
@@ -140,7 +171,7 @@
 		return `rgb(${r},${g},${b})`;
 	}
 
-	function trajectorySegments(): { d: string; color: string }[] {
+	const trajectorySegments = $derived.by(() => {
 		if (trajectory.length < 2) return [];
 		const segs = [];
 		for (let i = 1; i < trajectory.length; i++) {
@@ -150,57 +181,95 @@
 			});
 		}
 		return segs;
-	}
+	});
 
-	$effect(() => {
-		void containerWidth;
+	// ── Convergence sparkline: ‖∇f(x⁽ᵏ⁾)‖ across iterations, log scale.
+	// This is the actual quantity convergence theorems (Lipschitz gradient,
+	// strong convexity) make predictions about — plotting it live turns an
+	// abstract theorem into something you watch happen. ──
+	const gradNormHistory = $derived.by(() =>
+		trajectory.map((pt) => {
+			const g = func.grad(pt.x, pt.y);
+			return Math.max(1e-10, Math.hypot(g[0], g[1]));
+		})
+	);
+
+	const sparkW = 400;
+	const sparkH = 90;
+	const sparkPad = { l: 34, r: 10, t: 8, b: 18 };
+
+	const sparkPath = $derived.by(() => {
+		const hist = gradNormHistory;
+		if (hist.length < 2) return '';
+		const logs = hist.map((v) => Math.log10(v));
+		const lo = Math.min(...logs, -6);
+		const hi = Math.max(...logs, 1);
+		const span = hi - lo || 1;
+		return logs
+			.map((lv, i) => {
+				const px = sparkPad.l + (i / (hist.length - 1)) * (sparkW - sparkPad.l - sparkPad.r);
+				const py = sparkPad.t + (1 - (lv - lo) / span) * (sparkH - sparkPad.t - sparkPad.b);
+				return `${i === 0 ? 'M' : 'L'}${px.toFixed(1)},${py.toFixed(1)}`;
+			})
+			.join(' ');
 	});
 </script>
 
 <div class="demo-wrap" bind:clientWidth={containerWidth}>
-	<!-- Controls bar -->
-	<div class="controls">
-		<label for="func-select">Fonction :</label>
-		<select
-			id="func-select"
-			value={selectedKey}
-			onchange={(e) => handleFuncChange(e.currentTarget.value)}
-		>
-			{#each funcOptions as opt}
-				<option value={opt.key}>{opt.label}</option>
-			{/each}
-		</select>
-
-		<label class="alpha-label"
-			>α : <input type="range" min={0.0001} max={1} step={0.0001} bind:value={alpha} /></label
-		>
-		<span class="alpha-val">{alpha.toFixed(4)}</span>
+	<div class="options-row">
+		{#each funcOptions as o}
+			<button
+				class:active={selectedKey === o.key}
+				style:--opt-color={o.color}
+				onclick={() => selectFunc(o.key)}
+			>
+				<span class="dot" style:background={o.color}></span>
+				{o.label}
+			</button>
+		{/each}
 	</div>
+
+	<SliderGrid>
+		<div class="grp">
+			<div class="gttl">Taux d'apprentissage</div>
+			<Slider bind:value={alpha} min={0.0001} max={1} step={0.0001} label="α" />
+		</div>
+		<div class="grp">
+			<div class="gttl">Vitesse de lecture</div>
+			<Slider bind:value={stepIntervalMs} min={30} max={500} step={10} label="ms / pas" />
+		</div>
+	</SliderGrid>
 
 	<!-- Transport controls -->
 	<div class="transport">
 		<button class="btn" onclick={reset}>⟲ Reset</button>
-		<button class="btn" onclick={step} disabled={currentStep < 0 || currentGrad === null}
-			>▶ Step</button
-		>
+		<button class="btn" onclick={step} disabled={isConverged || diverged}>▶ Step</button>
 		{#if playing}
 			<button class="btn btn-warn" onclick={pause}>⏸ Pause</button>
 		{:else}
-			<button class="btn btn-primary" onclick={play}>⏵ Play</button>
+			<button class="btn btn-primary" onclick={play} disabled={isConverged || diverged}
+				>⏵ Play</button
+			>
 		{/if}
 
 		<div class="stats">
-			k = {Math.max(0, currentStep + 1)} | f(x⁽ᵏ⁾) = {trajectory.length
-				? trajectory[trajectory.length - 1].fVal.toFixed(4)
-				: '—'}
+			k = {stepCount} | f(x⁽ᵏ⁾) = {lastPoint ? lastPoint.fVal.toFixed(4) : '—'}
 		</div>
 	</div>
+
+	{#if diverged}
+		<div class="status-banner danger">✗ Divergence détectée — réduisez α et relancez.</div>
+	{:else if isConverged}
+		<div class="status-banner success">
+			✓ Convergé — ‖∇f(x⁽ᵏ⁾)‖ ≈ {lastGradNorm.toExponential(2)}
+		</div>
+	{/if}
 
 	<!-- Chart with overlays -->
 	<div class="chart-container">
 		<ContourPlot f={func.f} {domain} {width} {height} />
 		<svg class="overlay" {width} {height} viewBox={`0 0 ${width} ${height}`}>
-			{#each trajectorySegments() as seg}
+			{#each trajectorySegments as seg}
 				<path d={seg.d} fill="none" stroke={seg.color} stroke-width="2.5" stroke-linecap="round" />
 			{/each}
 
@@ -215,25 +284,22 @@
 			{/each}
 
 			<!-- Gradient vector at current point -->
-			{#if currentGrad && trajectory.length > 0}
-				{@const last = trajectory[trajectory.length - 1]}
-				{@const gNorm = Math.sqrt(currentGrad[0] ** 2 + currentGrad[1] ** 2)}
-				{@const scale = Math.min(40 / gNorm, alpha * 2)}
-				{@const ex = projX(last.x) - scale * currentGrad[0]}
-				{@const ey = projY(last.y) + scale * currentGrad[1]}
+			{#if !isConverged && lastPoint && lastGradNorm > 1e-9}
+				{@const scale = Math.min(40 / lastGradNorm, alpha * 2)}
+				{@const ex = projX(lastPoint.x) - scale * lastGrad[0]}
+				{@const ey = projY(lastPoint.y) + scale * lastGrad[1]}
 				<line
-					x1={projX(last.x)}
-					y1={projY(last.y)}
+					x1={projX(lastPoint.x)}
+					y1={projY(lastPoint.y)}
 					x2={ex}
 					y2={ey}
 					stroke="#ef4444"
 					stroke-width="3"
 					marker-end="url(#arrowhead)"
 				/>
-				<!-- Direction label -->
 				<text
-					x={(projX(last.x) + ex) / 2 + 8}
-					y={(projY(last.y) + ey) / 2 - 4}
+					x={(projX(lastPoint.x) + ex) / 2 + 8}
+					y={(projY(lastPoint.y) + ey) / 2 - 4}
 					fill="#ef4444"
 					font-size="10"
 					font-weight="600">−∇f</text
@@ -252,6 +318,53 @@
 		<span class="legend-item"><span class="swatch swatch-end"></span>Fin</span>
 		<span class="legend-item"><span class="swatch swatch-grad"></span>−∇f(x⁽ᵏ⁾)</span>
 	</div>
+
+	<!-- Convergence sparkline -->
+	<div class="spark-panel">
+		<div class="spark-title">‖∇f(x⁽ᵏ⁾)‖ en fonction de k (échelle log)</div>
+		<svg
+			viewBox={`0 0 ${sparkW} ${sparkH}`}
+			width="100%"
+			height={sparkH}
+			role="img"
+			aria-label="Convergence du gradient"
+		>
+			<line
+				x1={sparkPad.l}
+				y1={sparkH - sparkPad.b}
+				x2={sparkW - sparkPad.r}
+				y2={sparkH - sparkPad.b}
+				stroke="var(--color-border)"
+				stroke-width="1"
+			/>
+			<line
+				x1={sparkPad.l}
+				y1={sparkPad.t}
+				x2={sparkPad.l}
+				y2={sparkH - sparkPad.b}
+				stroke="var(--color-border)"
+				stroke-width="1"
+			/>
+			<path d={sparkPath} fill="none" stroke={opt.color} stroke-width="2" />
+			{#if gradNormHistory.length > 0}
+				{@const lastIdx = gradNormHistory.length - 1}
+				{@const lastLog = Math.log10(gradNormHistory[lastIdx])}
+				<circle
+					cx={sparkPad.l +
+						(lastIdx / Math.max(1, gradNormHistory.length - 1)) *
+							(sparkW - sparkPad.l - sparkPad.r)}
+					cy={sparkH - sparkPad.b}
+					r="3.5"
+					fill={opt.color}
+					opacity="0"
+				/>
+			{/if}
+		</svg>
+		<p class="spark-caption">
+			Une pente qui reste linéaire (en log) signale une convergence géométrique — typique d'une
+			fonction fortement convexe à gradient Lipschitz, comme le paraboloïde ou l'ellipse.
+		</p>
+	</div>
 </div>
 
 <style>
@@ -263,44 +376,54 @@
 		width: 100%;
 	}
 
-	.controls {
+	.options-row {
 		display: flex;
-		align-items: center;
 		gap: 0.5rem;
-		font-size: 0.875rem;
 		flex-wrap: wrap;
 		justify-content: center;
 	}
 
-	select,
-	input[type='range'] {
-		padding: 0.3rem 0.5rem;
-		border-radius: var(--radius-sm, 4px);
-		border: 1px solid var(--color-border);
-		background: var(--color-surface-2, transparent);
-		color: inherit;
-	}
-
-	select {
-		font-size: 0.8rem;
-	}
-
-	.alpha-label {
-		display: flex;
+	.options-row button {
+		display: inline-flex;
 		align-items: center;
-		gap: 0.35rem;
-		margin-left: 0.75rem;
-	}
-
-	input[type='range'] {
-		width: 100px;
+		gap: 0.4rem;
+		padding: 0.3rem 0.75rem;
+		border-radius: 999px;
+		border: 1px solid var(--color-border);
+		background: transparent;
 		cursor: pointer;
+		font-size: 0.8rem;
+		color: var(--color-text, inherit);
+		transition:
+			background 0.15s ease,
+			color 0.15s ease,
+			border-color 0.15s ease;
+	}
+	.options-row button .dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		display: inline-block;
+	}
+	.options-row button.active {
+		background: var(--opt-color);
+		color: white;
+		border-color: var(--opt-color);
+	}
+	.options-row button.active .dot {
+		background: white !important;
 	}
 
-	.alpha-val {
-		font-size: 0.8rem;
-		font-family: var(--font-mono, monospace);
-		min-width: 3.5em;
+	.grp {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+	.gttl {
+		font-size: 0.75rem;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--color-text-muted);
 	}
 
 	.transport {
@@ -350,6 +473,22 @@
 		min-width: 200px;
 	}
 
+	.status-banner {
+		font-size: 0.82rem;
+		font-weight: 600;
+		padding: 0.35rem 0.9rem;
+		border-radius: var(--radius-sm, 4px);
+		text-align: center;
+	}
+	.status-banner.success {
+		background: rgba(34, 197, 94, 0.15);
+		color: #22c55e;
+	}
+	.status-banner.danger {
+		background: rgba(239, 68, 68, 0.15);
+		color: #ef4444;
+	}
+
 	.chart-container {
 		position: relative;
 	}
@@ -391,5 +530,30 @@
 		background: #ef4444;
 		height: 12px;
 		width: 3px;
+	}
+
+	.spark-panel {
+		width: 100%;
+		max-width: 420px;
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+		padding: 0.6rem 0.75rem;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md, 8px);
+		background: var(--color-surface-2, transparent);
+	}
+	.spark-title {
+		font-size: 0.7rem;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		color: var(--color-text-muted);
+		text-align: center;
+	}
+	.spark-caption {
+		margin: 0;
+		font-size: 0.74rem;
+		color: var(--color-text-muted);
+		text-align: center;
 	}
 </style>

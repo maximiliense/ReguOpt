@@ -239,6 +239,7 @@
 	});
 
 	$effect(() => {
+		void heatGrid;
 		void f;
 		void domain;
 		void width;

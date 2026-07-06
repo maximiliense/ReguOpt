@@ -12,10 +12,11 @@
 
 	const startX = -5;
 	const startY = 4;
-	const alpha = 0.3;
+	let alpha = $state(0.3);
 	let beta = $state(0.9);
+	let maxSteps = $state(120);
 
-	function runGD(maxIter = 120): { x: number; y: number }[] {
+	function runGD(maxIter: number): { x: number; y: number }[] {
 		let x = startX,
 			y = startY;
 		const traj = [{ x, y }];
@@ -30,7 +31,7 @@
 		return traj;
 	}
 
-	function runMomentum(maxIter = 120): { x: number; y: number }[] {
+	function runMomentum(maxIter: number): { x: number; y: number }[] {
 		let x = startX,
 			y = startY;
 		let vx = 0,
@@ -49,8 +50,8 @@
 		return traj;
 	}
 
-	const gdPoints = $derived(runGD());
-	const momPoints = $derived(runMomentum());
+	const gdPoints = $derived(runGD(maxSteps));
+	const momPoints = $derived(runMomentum(maxSteps));
 
 	let panelWidth = $state(260);
 
@@ -81,20 +82,24 @@
 	const momEnd = $derived(
 		f(momPoints[momPoints.length - 1]?.x ?? 0, momPoints[momPoints.length - 1]?.y ?? 0)
 	);
-
-	$effect(() => {
-		void beta; // trigger re-render when momentum coefficient changes
-	});
 </script>
 
 <div class="mom-demo" bind:clientWidth={panelWidth}>
 	<h3 class="section-title">Momentum : amortissement des oscillations</h3>
 	<p class="sub-title">Fonction elliptique (x²/4 + y²) — vallée étroite, GD classique oscille</p>
 
-	<div class="beta-control">
-		<label for="beta-slider">β (momentum) :</label>
+	<div class="controls-row">
+		<label for="alpha-slider">α :</label>
+		<input id="alpha-slider" type="range" min={0.01} max={1} step={0.01} bind:value={alpha} />
+		<span class="val">{alpha.toFixed(2)}</span>
+
+		<label for="beta-slider">β :</label>
 		<input id="beta-slider" type="range" min={0} max={0.99} step={0.01} bind:value={beta} />
 		<span class="val">{beta.toFixed(2)}</span>
+
+		<label for="steps-slider">étapes :</label>
+		<input id="steps-slider" type="range" min={10} max={300} step={5} bind:value={maxSteps} />
+		<span class="val">{maxSteps}</span>
 	</div>
 
 	<div class="panels">
@@ -197,14 +202,16 @@
 		text-align: center;
 	}
 
-	.beta-control {
+	.controls-row {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		font-size: 0.85rem;
+		gap: 0.6rem;
+		font-size: 0.82rem;
 		padding: 0.4rem 1rem;
 		background: var(--color-surface-2, rgba(255, 255, 255, 0.03));
 		border-radius: var(--radius-sm, 4px);
+		flex-wrap: wrap;
+		justify-content: center;
 	}
 
 	input[type='range'] {

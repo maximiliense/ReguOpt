@@ -6,7 +6,7 @@
 	import { getPageByPath, getNextPage, getPrevPage } from '$lib/navigation.js';
 	import KatexBlock from '$lib/components/narrative/KatexBlock.svelte';
 
-	const meta = getPageByPath('/part1/exercises1');
+	const meta = getPageByPath('/part1/exercices');
 	const prevMeta = $derived(getPrevPage(meta?.index ?? 0));
 	const nextMeta = $derived(getNextPage(meta?.index ?? 0));
 
@@ -150,7 +150,7 @@
 			en cliquant sur « Voir la solution ».
 		</p>
 
-		<ExercisePanel number="2.1" title="Minimum d'une parabole simple">
+		<ExercisePanel number="1.1" title="Minimum d'une parabole simple">
 			{#snippet solution()}
 				<p>
 					On annule la dérivée : <KatexInline formula={f21p} /><KatexInline formula={`=0`} /> donne <KatexInline
@@ -170,7 +170,7 @@
 			</p>
 		</ExercisePanel>
 
-		<ExercisePanel number="2.2" title="Un point critique qui n'est pas un minimum">
+		<ExercisePanel number="1.2" title="Un point critique qui n'est pas un minimum">
 			{#snippet solution()}
 				<p>
 					<KatexInline formula={f22p} /><KatexInline formula={`=0`} /> donne formula={f22crit}
@@ -186,7 +186,7 @@
 			</p>
 		</ExercisePanel>
 
-		<ExercisePanel number="2.3" title="CSSO non nécessaire : Hessien nul en un vrai minimum">
+		<ExercisePanel number="1.3" title="CSSO non nécessaire : Hessien nul en un vrai minimum">
 			{#snippet solution()}
 				<p>
 					<KatexInline formula={f23p} /> s'annule en <KatexInline formula="x=0" />. La dérivée
@@ -205,7 +205,7 @@
 			</p>
 		</ExercisePanel>
 
-		<ExercisePanel number="2.4" title="Minimum en un point non différentiable">
+		<ExercisePanel number="1.4" title="Minimum en un point non différentiable">
 			{#snippet solution()}
 				<p>
 					<KatexInline formula={f24} /> n'est pas différentiable en <KatexInline formula="x=0" /> (les
@@ -226,7 +226,7 @@
 			</p>
 		</ExercisePanel>
 
-		<ExercisePanel number="2.5" title="Minimum global en dimension 2">
+		<ExercisePanel number="1.5" title="Minimum global en dimension 2">
 			{#snippet solution()}
 				<p>
 					<KatexInline formula={f25grad} /> s'annule uniquement en <KatexInline formula="(0,0)" />.
@@ -242,7 +242,7 @@
 			</p>
 		</ExercisePanel>
 
-		<ExercisePanel number="2.6" title="Point-selle malgré la CNO">
+		<ExercisePanel number="1.6" title="Point-selle malgré la CNO">
 			{#snippet solution()}
 				<p>
 					<KatexInline formula={f26grad} /> s'annule en <KatexInline formula="(0,0)" /> : la CNO est satisfaite.
@@ -261,7 +261,7 @@
 			</p>
 		</ExercisePanel>
 
-		<ExercisePanel number="2.7" title="Absence de minimum : domaine non fermé">
+		<ExercisePanel number="1.7" title="Absence de minimum : domaine non fermé">
 			{#snippet solution()}
 				<p>
 					<KatexInline formula={f27p} />, donc <KatexInline formula="f" /> n'a
@@ -286,7 +286,7 @@
 		</ExercisePanel>
 
 		<ExercisePanel
-			number="2.8"
+			number="1.8"
 			title="Absence de minimum malgré un domaine fermé : défaut de coercivité"
 		>
 			{#snippet solution()}
@@ -311,7 +311,7 @@
 			</p>
 		</ExercisePanel>
 
-		<ExercisePanel number="2.9" title="Convexité par somme">
+		<ExercisePanel number="1.9" title="Convexité par somme">
 			{#snippet solution()}
 				<p>
 					<KatexInline formula={f29a} /> est convexe (c'est une forme quadratique à coefficient positif).
@@ -326,7 +326,7 @@
 			</p>
 		</ExercisePanel>
 
-		<ExercisePanel number="2.10" title="Minimum d'un paraboloïde translaté">
+		<ExercisePanel number="1.10" title="Minimum d'un paraboloïde translaté">
 			{#snippet solution()}
 				<p>
 					Le gradient de <KatexInline formula={f210} /> est <KatexInline
@@ -345,7 +345,7 @@
 			</p>
 		</ExercisePanel>
 
-		<ExercisePanel number="2.11" title="Unicité du minimum pour une fonction strictement convexe">
+		<ExercisePanel number="1.11" title="Unicité du minimum pour une fonction strictement convexe">
 			{#snippet solution()}
 				<p>
 					Supposons par l'absurde que <KatexInline formula="f" /> strictement convexe admette deux minimiseurs
@@ -369,7 +369,7 @@
 			</p>
 		</ExercisePanel>
 
-		<ExercisePanel number="2.12" title="Un minimum local qui n'est pas global">
+		<ExercisePanel number="1.12" title="Un minimum local qui n'est pas global">
 			{#snippet solution()}
 				<p>
 					<KatexInline formula={f212p} /> s'annule en <KatexInline formula={f212crit} />. On a <KatexInline
@@ -391,7 +391,7 @@
 			</p>
 		</ExercisePanel>
 
-		<ExercisePanel number="2.13" title="Coercivité non nécessaire : minimum global sans coercivité">
+		<ExercisePanel number="1.13" title="Coercivité non nécessaire : minimum global sans coercivité">
 			{#snippet solution()}
 				<p>
 					<KatexInline formula={f213} /> est bornée (donc pas coercive : elle ne tend jamais vers <KatexInline
@@ -409,7 +409,7 @@
 			</p>
 		</ExercisePanel>
 
-		<ExercisePanel number="2.14" title="Classification de plusieurs points critiques en 2D">
+		<ExercisePanel number="1.14" title="Classification de plusieurs points critiques en 2D">
 			{#snippet solution()}
 				<p>
 					<KatexInline formula={f214grad} />. En annulant, <KatexInline formula={f214system} />. Le
@@ -428,7 +428,7 @@
 			</p>
 		</ExercisePanel>
 
-		<ExercisePanel number="2.15" title="Coercivité malgré un terme oscillant">
+		<ExercisePanel number="1.15" title="Coercivité malgré un terme oscillant">
 			{#snippet solution()}
 				<p>
 					Comme <KatexInline formula="|\sin(x)| \le 1" /> pour tout <KatexInline formula="x" />, on
@@ -448,7 +448,7 @@
 			</p>
 		</ExercisePanel>
 
-		<ExercisePanel number="2.16" title="Double puits symétrique">
+		<ExercisePanel number="1.16" title="Double puits symétrique">
 			{#snippet solution()}
 				<p>
 					<KatexInline formula={f216p} /> s'annule en <KatexInline formula={f216crit} />. On a <KatexInline
@@ -470,7 +470,7 @@
 			</p>
 		</ExercisePanel>
 
-		<ExercisePanel number="2.17" title="Nécessité de la fermeture du domaine">
+		<ExercisePanel number="1.17" title="Nécessité de la fermeture du domaine">
 			{#snippet solution()}
 				<p>
 					<KatexInline formula={f217inf} />, mais <KatexInline formula={`x=0 \notin (0,1)`} />, donc
@@ -490,7 +490,7 @@
 			</p>
 		</ExercisePanel>
 
-		<ExercisePanel number="2.18" title="Domaine fermé mais absence de coercivité">
+		<ExercisePanel number="1.18" title="Domaine fermé mais absence de coercivité">
 			{#snippet solution()}
 				<p>
 					Ici <KatexInline formula={String.raw`\Omega = [0, +\infty)`} /> est bien fermé et non vide.
@@ -508,7 +508,7 @@
 			</p>
 		</ExercisePanel>
 
-		<ExercisePanel number="2.19" title="Classification directe à partir des valeurs propres">
+		<ExercisePanel number="1.19" title="Classification directe à partir des valeurs propres">
 			{#snippet solution()}
 				<p>
 					<strong>Cas 1</strong> — <KatexInline formula={f219case1} /> : les valeurs propres sont de signes
@@ -527,7 +527,7 @@
 			</p>
 		</ExercisePanel>
 
-		<ExercisePanel number="2.20" title="Une infinité de minima globaux : perte de l'unicité">
+		<ExercisePanel number="1.20" title="Une infinité de minima globaux : perte de l'unicité">
 			{#snippet solution()}
 				<p>
 					<KatexInline formula={f220grad} />. Sur le cercle unité, <KatexInline
@@ -549,7 +549,7 @@
 		</ExercisePanel>
 		<h2>Fonctions en ML</h2>
 
-		<ExercisePanel number="2.5" title="Convexité d'une combinaison linéaire">
+		<ExercisePanel number="2.1" title="Convexité d'une combinaison linéaire">
 			<p>
 				Soient <KatexInline formula="f_1,f_2" /> deux fonctions convexes sur
 				<KatexInline formula="\Omega" />. Soient
@@ -600,7 +600,7 @@ g(\lambda x+(1-\lambda)y)
 			{/snippet}
 		</ExercisePanel>
 
-		<ExercisePanel number="2.6" title="Convexité d'une moyenne empirique">
+		<ExercisePanel number="2.2" title="Convexité d'une moyenne empirique">
 			<p>
 				Soient
 				<KatexInline formula="n" />
@@ -639,7 +639,7 @@ g(\lambda x+(1-\lambda)y)
 			{/snippet}
 		</ExercisePanel>
 
-		<ExercisePanel number="2.7" title="Gradient d'une somme">
+		<ExercisePanel number="2.3" title="Gradient d'une somme">
 			<p>
 				Soient deux fonctions différentiables
 				<KatexInline formula="f,g:\mathbb R^d\rightarrow\mathbb R" />.
@@ -673,7 +673,7 @@ g(\lambda x+(1-\lambda)y)
 			{/snippet}
 		</ExercisePanel>
 
-		<ExercisePanel number="2.8" title="Hessienne d'une somme quadratique">
+		<ExercisePanel number="2.4" title="Hessienne d'une somme quadratique">
 			<p>
 				Soit
 				<KatexInline formula={String.raw`f(x)=x^\top Ax+x^\top Bx`} />, où
@@ -707,7 +707,7 @@ g(\lambda x+(1-\lambda)y)
 			{/snippet}
 		</ExercisePanel>
 
-		<ExercisePanel number="2.9" title="Composition affine">
+		<ExercisePanel number="2.5" title="Composition affine">
 			<p>
 				Soit
 				<KatexInline formula={String.raw`g(t)=t^2`} />
@@ -740,7 +740,7 @@ g(\lambda x+(1-\lambda)y)
 			{/snippet}
 		</ExercisePanel>
 
-		<ExercisePanel number="2.10" title="Coercivité">
+		<ExercisePanel number="2.6" title="Coercivité">
 			<p>
 				Soit
 				<KatexInline formula={String.raw`f(x)=x^2+\sin(x).`} />
@@ -774,7 +774,7 @@ g(\lambda x+(1-\lambda)y)
 			{/snippet}
 		</ExercisePanel>
 
-		<ExercisePanel number="2.11" title="Identifier les propriétés conservées">
+		<ExercisePanel number="2.7" title="Identifier les propriétés conservées">
 			<p>
 				Pour chacune des affirmations suivantes, répondre par
 				<strong>Vrai</strong> ou
@@ -805,6 +805,1224 @@ g(\lambda x+(1-\lambda)y)
 					</li>
 				</ol>
 			{/snippet}
+		</ExercisePanel>
+		<ExercisePanel number="2.8" title="Convexité de la régression logistique">
+			<p>
+				On considère la perte logistique élémentaire
+				<KatexInline formula={String.raw`f_i(w)=\log\!\left(1+e^{-y_iw^\top x_i}\right)`} />.
+			</p>
+
+			<ol>
+				<li>
+					Poser
+					<KatexInline formula={String.raw`t=y_iw^\top x_i`} />.
+				</li>
+				<li>
+					Montrer que la fonction
+					<KatexInline formula={String.raw`t\mapsto\log(1+e^{-t})`} />
+					est convexe.
+				</li>
+				<li>
+					En déduire que
+					<KatexInline formula={String.raw`f_i`} />
+					est convexe en
+					<KatexInline formula={String.raw`w`} />.
+				</li>
+			</ol>
+
+			{#snippet solution()}
+				<p>
+					On écrit
+					<KatexInline formula={String.raw`f_i(w)=g(t)`} />
+					avec
+					<KatexInline formula={String.raw`t=y_iw^\top x_i`} />
+					et
+					<KatexInline formula={String.raw`g(t)=\log(1+e^{-t})`} />.
+				</p>
+
+				<p>
+					La dérivée seconde de
+					<KatexInline formula={String.raw`g`} />
+					vaut :
+				</p>
+
+				<KatexBlock
+					formula={String.raw`
+g''(t)=
+\frac{e^{-t}}{(1+e^{-t})^2}
+=
+\sigma(t)\bigl(1-\sigma(t)\bigr)\ge0.
+`}
+				/>
+
+				<p>
+					La fonction
+					<KatexInline formula={String.raw`g`} />
+					est donc convexe. Comme
+					<KatexInline formula={String.raw`t=y_iw^\top x_i`} />
+					est une application affine de
+					<KatexInline formula={String.raw`w`} />, le théorème de composition affine implique que
+					<KatexInline formula={String.raw`f_i`} />
+					est convexe.
+				</p>
+			{/snippet}
+		</ExercisePanel>
+
+		<ExercisePanel number="2.9" title="Gradient de la perte quadratique">
+			<p>Soit la fonction</p>
+
+			<KatexBlock
+				formula={String.raw`
+f(w)=
+\frac12(y-w^\top x)^2.
+`}
+			/>
+
+			<ol>
+				<li>
+					Calculer
+					<KatexInline formula={String.raw`\nabla f(w)`} />.
+				</li>
+				<li>
+					Calculer
+					<KatexInline formula={String.raw`H_f(w)`} />.
+				</li>
+				<li>
+					Conclure sur la convexité de
+					<KatexInline formula={String.raw`f`} />.
+				</li>
+			</ol>
+
+			{#snippet solution()}
+				<p>En dérivant :</p>
+
+				<KatexBlock
+					formula={String.raw`
+\nabla f(w)
+=
+-(y-w^\top x)x.
+`}
+				/>
+
+				<p>Une seconde dérivation donne :</p>
+
+				<KatexBlock
+					formula={String.raw`
+H_f(w)=xx^\top.
+`}
+				/>
+
+				<p>
+					Pour tout vecteur
+					<KatexInline formula={String.raw`v`} /> :
+				</p>
+
+				<KatexBlock
+					formula={String.raw`
+v^\top H_fv
+=
+v^\top xx^\top v
+=
+(x^\top v)^2
+\ge0.
+`}
+				/>
+
+				<p>
+					La Hessienne est donc semi-définie positive et
+					<KatexInline formula={String.raw`f`} />
+					est convexe.
+				</p>
+			{/snippet}
+		</ExercisePanel>
+
+		<ExercisePanel number="2.10" title="Pourquoi Ridge garantit-il une solution unique ?">
+			<p>On considère la fonction Ridge</p>
+
+			<KatexBlock
+				formula={String.raw`
+f_\lambda(w)
+=
+\frac1{2n}\|Xw-y\|^2
++
+\frac\lambda2\|w\|^2,
+\qquad
+\lambda>0.
+`}
+			/>
+
+			<ol>
+				<li>Écrire sa Hessienne.</li>
+				<li>Montrer qu'elle est définie positive.</li>
+				<li>Pourquoi cela implique-t-il l'unicité du minimum ?</li>
+			</ol>
+
+			{#snippet solution()}
+				<p>La Hessienne vaut</p>
+
+				<KatexBlock
+					formula={String.raw`
+H=
+\frac1nX^\top X+\lambda I.
+`}
+				/>
+
+				<p>
+					Pour tout
+					<KatexInline formula={String.raw`v\neq0`} /> :
+				</p>
+
+				<KatexBlock
+					formula={String.raw`
+v^\top Hv
+=
+\frac1n\|Xv\|^2
++
+\lambda\|v\|^2
+>
+0.
+`}
+				/>
+
+				<p>
+					Ainsi,
+					<KatexInline formula={String.raw`H`} />
+					est définie positive. La fonction est donc strictement convexe, ce qui garantit l'existence
+					d'un unique minimiseur.
+				</p>
+			{/snippet}
+		</ExercisePanel>
+
+		<ExercisePanel number="2.11" title="Identifier une fonction coercive">
+			<p>
+				Pour chacune des fonctions suivantes, déterminer si elle est coercive. Justifier votre
+				réponse.
+			</p>
+
+			<ol>
+				<li><KatexInline formula={String.raw`f(x)=x^2+5`} /></li>
+				<li><KatexInline formula={String.raw`g(x)=\sin(x)`} /></li>
+				<li><KatexInline formula={String.raw`h(x)=e^{-x}`} /></li>
+				<li><KatexInline formula={String.raw`k(x)=x^4-\cos(x)`} /></li>
+			</ol>
+
+			{#snippet solution()}
+				<ol>
+					<li>
+						<strong>Coercive.</strong>
+						<KatexInline formula={String.raw`x^2`} />
+						tend vers
+						<KatexInline formula={String.raw`+\infty`} />
+						quand
+						<KatexInline formula={String.raw`|x|\to\infty`} />.
+					</li>
+
+					<li>
+						<strong>Non coercive.</strong>
+						<KatexInline formula={String.raw`\sin(x)`} />
+						reste comprise entre
+						<KatexInline formula={String.raw`-1`} />
+						et
+						<KatexInline formula={String.raw`1`} />.
+					</li>
+
+					<li>
+						<strong>Non coercive.</strong>
+						Quand
+						<KatexInline formula={String.raw`x\to+\infty`} />,
+						<KatexInline formula={String.raw`e^{-x}\to0`} />.
+					</li>
+
+					<li>
+						<strong>Coercive.</strong>
+						Le terme dominant est
+						<KatexInline formula={String.raw`x^4`} />, et
+						<KatexInline formula={String.raw`-\cos(x)`} />
+						est borné. Ainsi,
+					</li>
+				</ol>
+
+				<KatexBlock
+					formula={String.raw`
+k(x)\ge x^4-1
+\xrightarrow[|x|\to\infty]{}
++\infty.
+`}
+				/>
+			{/snippet}
+		</ExercisePanel>
+		<ExercisePanel number="2.12" title="Composition avec une application affine">
+			<p>
+				Soit la fonction
+				<KatexInline formula={String.raw`g(z)=\|z\|_2`} />, qui est convexe sur
+				<KatexInline formula={String.raw`\mathbb{R}^m`} />. On considère l'application affine
+				<KatexInline formula={String.raw`A(x)=Mx+b`} />.
+			</p>
+
+			<ol>
+				<li>
+					Écrire la fonction composée
+					<KatexInline formula={String.raw`f=g\circ A`} />.
+				</li>
+				<li>
+					Montrer que
+					<KatexInline formula={String.raw`f`} />
+					est convexe.
+				</li>
+				<li>Citer un exemple concret en Machine Learning utilisant cette propriété.</li>
+			</ol>
+
+			{#snippet solution()}
+				<p>On obtient</p>
+
+				<KatexBlock
+					formula={String.raw`
+f(x)=\|Mx+b\|_2.
+`}
+				/>
+
+				<p>
+					La norme euclidienne est une fonction convexe. L'application
+					<KatexInline formula={String.raw`A`} />
+					étant affine, le théorème de composition affine montre que
+					<KatexInline formula={String.raw`f`} />
+					est convexe.
+				</p>
+
+				<p>
+					Cette propriété intervient par exemple dans les pénalités de type Ridge, les contraintes
+					convexes ou encore certaines fonctions de perte utilisées en apprentissage supervisé.
+				</p>
+			{/snippet}
+		</ExercisePanel>
+
+		<ExercisePanel number="2.13" title="Forte convexité du Ridge">
+			<p>On considère la fonction Ridge</p>
+
+			<KatexBlock
+				formula={String.raw`
+f_\lambda(w)
+=
+\frac1{2n}\|Xw-y\|^2
++
+\frac{\lambda}{2}\|w\|^2,
+\qquad
+\lambda>0.
+`}
+			/>
+
+			<ol>
+				<li>
+					Calculer la Hessienne de
+					<KatexInline formula={String.raw`f_\lambda`} />.
+				</li>
+				<li>
+					Montrer que toutes ses valeurs propres sont supérieures ou égales à
+					<KatexInline formula={String.raw`\lambda`} />.
+				</li>
+				<li>
+					En déduire que
+					<KatexInline formula={String.raw`f_\lambda`} />
+					est fortement convexe.
+				</li>
+			</ol>
+
+			{#snippet solution()}
+				<p>La Hessienne est</p>
+
+				<KatexBlock
+					formula={String.raw`
+H=
+\frac1nX^\top X+\lambda I.
+`}
+				/>
+
+				<p>
+					Pour tout vecteur
+					<KatexInline formula={String.raw`v`} />,
+				</p>
+
+				<KatexBlock
+					formula={String.raw`
+v^\top Hv
+=
+\frac1n\|Xv\|^2
++
+\lambda\|v\|^2
+\ge
+\lambda\|v\|^2.
+`}
+				/>
+
+				<p>
+					Ainsi, toutes les valeurs propres de
+					<KatexInline formula={String.raw`H`} />
+					sont supérieures ou égales à
+					<KatexInline formula={String.raw`\lambda`} />. La Hessienne est donc uniformément définie
+					positive, ce qui montre que
+					<KatexInline formula={String.raw`f_\lambda`} />
+					est
+					<KatexInline formula={String.raw`\lambda`} />
+					-fortement convexe.
+				</p>
+			{/snippet}
+		</ExercisePanel>
+
+		<ExercisePanel number="2.14" title="Synthèse des propriétés de conservation">
+			<p>
+				Compléter le tableau suivant en indiquant si la propriété est conservée par somme de
+				fonctions, puis donner une justification en une phrase.
+			</p>
+
+			<table>
+				<thead>
+					<tr>
+						<th>Propriété</th>
+						<th>Conservée ?</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						<td>Convexité</td>
+						<td>?</td>
+					</tr>
+					<tr>
+						<td>Différentiabilité</td>
+						<td>?</td>
+					</tr>
+					<tr>
+						<td>Coercivité</td>
+						<td>?</td>
+					</tr>
+					<tr>
+						<td>Forte convexité</td>
+						<td>?</td>
+					</tr>
+					<tr>
+						<td>Gradient Lipschitz</td>
+						<td>?</td>
+					</tr>
+				</tbody>
+			</table>
+
+			{#snippet solution()}
+				<table>
+					<thead>
+						<tr>
+							<th>Propriété</th>
+							<th>Réponse</th>
+						</tr>
+					</thead>
+					<tbody>
+						<tr>
+							<td>Convexité</td>
+							<td>
+								<strong>Oui.</strong>
+								Une combinaison linéaire à coefficients positifs de fonctions convexes est convexe.
+							</td>
+						</tr>
+
+						<tr>
+							<td>Différentiabilité</td>
+							<td>
+								<strong>Oui.</strong>
+								Le gradient d'une somme est la somme des gradients.
+							</td>
+						</tr>
+
+						<tr>
+							<td>Coercivité</td>
+							<td>
+								<strong>Oui</strong>, dès qu'au moins un terme est coercif et que les autres sont
+								minorés.
+							</td>
+						</tr>
+
+						<tr>
+							<td>Forte convexité</td>
+							<td>
+								<strong>Oui.</strong>
+								Le paramètre de forte convexité est conservé lorsque tous les termes ont le même module.
+							</td>
+						</tr>
+
+						<tr>
+							<td>Gradient Lipschitz</td>
+							<td>
+								<strong>Oui.</strong>
+								La constante de Lipschitz de la moyenne est la moyenne des constantes individuelles.
+							</td>
+						</tr>
+					</tbody>
+				</table>
+
+				<p>
+					Ces résultats expliquent pourquoi les fonctions de perte en Machine Learning sont
+					généralement analysées terme par terme avant d'étudier leur moyenne empirique.
+				</p>
+			{/snippet}
+		</ExercisePanel>
+		<ExercisePanel number="2.15" title="Gradient Lipschitz d'une moyenne">
+			<p>
+				Soient
+				<KatexInline formula={String.raw`f_1,\ldots,f_n`} />
+				des fonctions dont les gradients sont respectivement
+				<KatexInline formula={String.raw`L_1,\ldots,L_n`} />
+				-Lipschitz.
+			</p>
+
+			<ol>
+				<li>
+					Écrire le gradient de
+					<KatexInline formula={String.raw`f(x)=\frac1n\sum_{i=1}^n f_i(x)`} />.
+				</li>
+				<li>
+					Montrer que
+					<KatexInline formula={String.raw`\nabla f`} />
+					est Lipschitz.
+				</li>
+				<li>Donner une constante de Lipschitz valable.</li>
+			</ol>
+
+			{#snippet solution()}
+				<p>On a</p>
+
+				<KatexBlock
+					formula={String.raw`
+\nabla f(x)
+=
+\frac1n
+\sum_{i=1}^n
+\nabla f_i(x).
+`}
+				/>
+
+				<p>En utilisant l'inégalité triangulaire,</p>
+
+				<KatexBlock
+					formula={String.raw`
+\begin{aligned}
+\|\nabla f(x)-\nabla f(y)\|
+&=
+\left\|
+\frac1n
+\sum_i
+(\nabla f_i(x)-\nabla f_i(y))
+\right\| \\
+&\le
+\frac1n
+\sum_i
+\|\nabla f_i(x)-\nabla f_i(y)\| \\
+&\le
+\frac1n
+\sum_i
+L_i
+\|x-y\|.
+\end{aligned}
+`}
+				/>
+
+				<p>
+					Ainsi,
+					<KatexInline formula={String.raw`\nabla f`} />
+					est
+					<KatexInline formula={String.raw`L`} />
+					-Lipschitz avec
+				</p>
+
+				<KatexBlock
+					formula={String.raw`
+L=
+\frac1n
+\sum_{i=1}^n
+L_i.
+`}
+				/>
+			{/snippet}
+		</ExercisePanel>
+
+		<ExercisePanel number="2.16" title="Pourquoi la descente de gradient fonctionne-t-elle ?">
+			<p>
+				Expliquer le rôle des propriétés suivantes dans la convergence de la descente de gradient :
+			</p>
+
+			<ol>
+				<li>Convexité.</li>
+				<li>Gradient Lipschitz-continu.</li>
+				<li>Forte convexité.</li>
+			</ol>
+
+			{#snippet solution()}
+				<ul>
+					<li>
+						<strong>Convexité :</strong> elle garantit que tout minimum local est également un minimum
+						global.
+					</li>
+
+					<li>
+						<strong>Gradient Lipschitz :</strong> il permet de choisir un pas de descente suffisamment
+						petit pour assurer une diminution de la fonction objectif à chaque itération.
+					</li>
+
+					<li>
+						<strong>Forte convexité :</strong> elle garantit l'unicité du minimum et une convergence plus
+						rapide des méthodes de premier ordre.
+					</li>
+				</ul>
+			{/snippet}
+		</ExercisePanel>
+
+		<ExercisePanel number="2.17" title="Comparer Ridge et Lasso">
+			<p>Compléter le tableau suivant.</p>
+
+			<table>
+				<thead>
+					<tr>
+						<th>Propriété</th>
+						<th>Ridge</th>
+						<th>Lasso</th>
+					</tr>
+				</thead>
+
+				<tbody>
+					<tr>
+						<td>Convexe</td>
+						<td>?</td>
+						<td>?</td>
+					</tr>
+
+					<tr>
+						<td>Différentiable</td>
+						<td>?</td>
+						<td>?</td>
+					</tr>
+
+					<tr>
+						<td>Produit des poids nuls</td>
+						<td>?</td>
+						<td>?</td>
+					</tr>
+				</tbody>
+			</table>
+
+			{#snippet solution()}
+				<table>
+					<thead>
+						<tr>
+							<th>Propriété</th>
+							<th>Ridge</th>
+							<th>Lasso</th>
+						</tr>
+					</thead>
+
+					<tbody>
+						<tr>
+							<td>Convexe</td>
+							<td>Oui</td>
+							<td>Oui</td>
+						</tr>
+
+						<tr>
+							<td>Différentiable</td>
+							<td>Oui</td>
+							<td>Non en <KatexInline formula={String.raw`0`} /></td>
+						</tr>
+
+						<tr>
+							<td>Poids exactement nuls</td>
+							<td>Rarement</td>
+							<td>Oui</td>
+						</tr>
+					</tbody>
+				</table>
+
+				<p>
+					Le Ridge rétrécit progressivement les coefficients tandis que le Lasso réalise une
+					sélection automatique de variables en annulant certains poids.
+				</p>
+			{/snippet}
+		</ExercisePanel>
+
+		<ExercisePanel
+			number="2.18"
+			title="Pourquoi les réseaux de neurones ne sont-ils pas convexes ?"
+		>
+			<p>
+				La perte utilisée pour entraîner un réseau de neurones est souvent la moyenne de pertes
+				convexes comme l'erreur quadratique ou la log-perte.
+			</p>
+
+			<p>Pourtant, le problème d'optimisation est généralement non convexe. Expliquer pourquoi.</p>
+
+			{#snippet solution()}
+				<p>
+					Chaque perte élémentaire est effectivement convexe par rapport à son entrée. Cependant, la
+					sortie du réseau est une fonction très non linéaire des paramètres
+					<KatexInline formula={String.raw`\theta`} />.
+				</p>
+
+				<p>
+					Le théorème de composition affine ne s'applique plus puisque la fonction calculée par le
+					réseau n'est pas affine en
+					<KatexInline formula={String.raw`\theta`} />. La fonction objectif contient donc de
+					nombreux minima locaux et points-selle, ce qui explique la non-convexité de l'entraînement
+					des réseaux de neurones.
+				</p>
+			{/snippet}
+		</ExercisePanel>
+
+		<ExercisePanel number="2.19" title="Vrai ou Faux">
+			<p>
+				Indiquer si chacune des affirmations suivantes est vraie ou fausse, puis justifier
+				brièvement.
+			</p>
+
+			<ol>
+				<li>Une fonction fortement convexe est toujours convexe.</li>
+
+				<li>Toute fonction convexe est fortement convexe.</li>
+
+				<li>Une Hessienne définie positive implique un minimum unique.</li>
+
+				<li>La régularisation Ridge améliore le conditionnement de la Hessienne.</li>
+
+				<li>La moyenne de fonctions différentiables est différentiable.</li>
+			</ol>
+
+			{#snippet solution()}
+				<ol>
+					<li>
+						<strong>Vrai.</strong>
+						La forte convexité est une propriété plus forte que la convexité.
+					</li>
+
+					<li>
+						<strong>Faux.</strong>
+						Une fonction convexe peut être plate sur certaines directions.
+					</li>
+
+					<li>
+						<strong>Vrai.</strong>
+						Une Hessienne définie positive implique une stricte convexité.
+					</li>
+
+					<li>
+						<strong>Vrai.</strong>
+						L'ajout de
+						<KatexInline formula={String.raw`\lambda I`} />
+						augmente les plus petites valeurs propres.
+					</li>
+
+					<li>
+						<strong>Vrai.</strong>
+						Le gradient d'une moyenne est la moyenne des gradients.
+					</li>
+				</ol>
+			{/snippet}
+		</ExercisePanel>
+
+		<ExercisePanel number="2.20" title="Bilan de la leçon">
+			<p>Résumer en quelques phrases les idées essentielles de cette leçon.</p>
+
+			{#snippet solution()}
+				<ul>
+					<li>
+						Les fonctions de perte en Machine Learning sont généralement des moyennes de pertes
+						individuelles.
+					</li>
+
+					<li>
+						La convexité, la différentiabilité, la forte convexité et la Lipschitz-continuité du
+						gradient sont conservées par cette moyenne.
+					</li>
+
+					<li>La composition avec une application affine préserve également la convexité.</li>
+
+					<li>
+						Ces propriétés expliquent pourquoi la régression linéaire, la régression logistique ou
+						les SVM conduisent à des problèmes convexes.
+					</li>
+
+					<li>
+						Les réseaux de neurones profonds échappent à ce cadre car leur paramétrisation est non
+						affine, ce qui rend l'optimisation non convexe.
+					</li>
+				</ul>
+			{/snippet}
+		</ExercisePanel>
+		<h2>Descente de gradient et accélération</h2>
+		<ExercisePanel number="3.1" title="Calcul explicite d'un pas de descente de gradient en 1D">
+			{#snippet solution()}
+				<p>
+					La fonction est <KatexInline formula={String.raw`f(x) = x^2 - 4x`} />, sa dérivée est <KatexInline
+						formula={String.raw`f'(x) = 2x - 4`}
+					/>. En <KatexInline formula={String.raw`x^{(0)} = 0`} />, le gradient vaut <KatexInline
+						formula={String.raw`f'(0) = -4`}
+					/>. L'itération de descente de gradient s'écrit :
+				</p>
+				<KatexBlock
+					formula={String.raw`x^{(1)} = x^{(0)} - \alpha f'(x^{(0)}) = 0 - 0.1 \times (-4) = 0.4.`}
+				/>
+			{/snippet}
+			<p>
+				Soit la fonction <KatexInline formula={String.raw`f(x) = x^2 - 4x`} />. À partir du point
+				initial <KatexInline formula={String.raw`x^{(0)} = 0`} />, calculez la valeur de l'itéré <KatexInline
+					formula={String.raw`x^{(1)}`}
+				/> pour un pas constant <KatexInline formula={String.raw`\alpha = 0.1`} />.
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel number="3.2" title="Condition de convergence sur le pas (cas quadratique 1D)">
+			{#snippet solution()}
+				<p>
+					L'itéré s'écrit <KatexInline
+						formula={String.raw`x^{(k+1)} = x^{(k)} - \alpha (2x^{(k)}) = (1 - 2\alpha)x^{(k)}`}
+					/>. Par récurrence, <KatexInline
+						formula={String.raw`x^{(k)} = (1 - 2\alpha)^k x^{(0)}`}
+					/>. La suite converge vers le minimum <KatexInline formula={String.raw`x^* = 0`} /> si et seulement
+					si le facteur multiplicatif est strictement compris entre -1 et 1 :
+				</p>
+				<KatexBlock
+					formula={String.raw`-1 < 1 - 2\alpha < 1 \iff -2 < -2\alpha < 0 \iff 0 < \alpha < 1.`}
+				/>
+			{/snippet}
+			<p>
+				Soit <KatexInline formula={String.raw`f(x) = x^2`} />. Écrivez la relation de récurrence
+				liant <KatexInline formula={String.raw`x^{(k+1)}`} /> à <KatexInline
+					formula={String.raw`x^{(k)}`}
+				/> lors d'une descente de gradient. Déterminez la condition exacte sur le pas constant <KatexInline
+					formula={String.raw`\alpha`}
+				/> pour que la suite converge vers le minimum global.
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel number="3.3" title="Dérivée directionnelle et plus forte descente">
+			{#snippet solution()}
+				<p>
+					La dérivée directionnelle le long de <KatexInline formula={String.raw`d`} /> est donnée par
+					le produit scalaire <KatexInline formula={String.raw`\langle \nabla f(x), d \rangle`} />.
+					Par l'inégalité de Cauchy-Schwarz, ce produit scalaire est minimal lorsque <KatexInline
+						formula={String.raw`d`}
+					/> est colinéaire et de signe opposé à <KatexInline formula={String.raw`\nabla f(x)`} />.
+					Pour une direction unitaire (<KatexInline formula={String.raw`\|d\| = 1`} />), le choix
+					optimal est unique et vaut <KatexInline
+						formula={String.raw`d^* = -\frac{\nabla f(x)}{\|\nabla f(x)\|}`}
+					/>.
+				</p>
+			{/snippet}
+			<p>
+				Montrez géométriquement ou algébriquement pourquoi la direction opposée au gradient <KatexInline
+					formula={String.raw`-\nabla f(x)`}
+				/> minimise la dérivée directionnelle parmi toutes les directions unitaires <KatexInline
+					formula={String.raw`\|d\| = 1`}
+				/>.
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel number="3.4" title="Justification locale par développement de Taylor">
+			{#snippet solution()}
+				<p>
+					Par le développement de Taylor à l'ordre 1, on substitue la mise à jour <KatexInline
+						formula={String.raw`x^{(k+1)} = x^{(k)} - \alpha \nabla f(x^{(k)})`}
+					/> :
+				</p>
+				<KatexBlock
+					formula={String.raw`f(x^{(k)} - \alpha \nabla f(x^{(k)})) = f(x^{(k)}) - \alpha \|\nabla f(x^{(k)})\|^2 + o(\alpha).`}
+				/>
+				<p>
+					Si <KatexInline formula={String.raw`\nabla f(x^{(k)}) \neq 0`} />, le terme <KatexInline
+						formula={String.raw`-\alpha \|\nabla f(x^{(k)})\|^2`}
+					/> est strictement négatif pour tout <KatexInline formula={String.raw`\alpha > 0`} />.
+					Pour <KatexInline formula={String.raw`\alpha`} /> suffisamment petit, ce terme dominant garantit
+					que <KatexInline formula={String.raw`f(x^{(k+1)}) < f(x^{(k)})`} />.
+				</p>
+			{/snippet}
+			<p>
+				En utilisant un développement de Taylor à l'ordre 1, justifiez qu'un pas de descente de
+				gradient permet toujours de diminuer localement la valeur d'une fonction objectif si le
+				gradient est non nul et le pas <KatexInline formula={String.raw`\alpha`} /> est choisi assez petit.
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel number="3.5" title="Recherche linéaire exacte (Exact Line Search)">
+			{#snippet solution()}
+				<p>
+					On cherche <KatexInline formula={String.raw`\alpha`} /> qui minimise <KatexInline
+						formula={String.raw`\phi(\alpha) = f(x - \alpha \nabla f(x))`}
+					/>. Ici, <KatexInline formula={String.raw`x = (1, 1)^\top`} /> et <KatexInline
+						formula={String.raw`\nabla f(x) = (2x_1, 4x_2)^\top = (2, 4)^\top`}
+					/>. L'itéré en fonction de <KatexInline formula={String.raw`\alpha`} /> est <KatexInline
+						formula={String.raw`(1 - 2\alpha, 1 - 4\alpha)^\top`}
+					/>. On injecte dans <KatexInline formula={String.raw`f`} /> :
+				</p>
+				<KatexBlock
+					formula={String.raw`\phi(\alpha) = (1 - 2\alpha)^2 + 2(1 - 4\alpha)^2 = 1 - 4\alpha + 4\alpha^2 + 2(1 - 8\alpha + 16\alpha^2) = 36\alpha^2 - 20\alpha + 3.`}
+				/>
+				<p>
+					On annule la dérivée <KatexInline
+						formula={String.raw`\phi'(\alpha) = 72\alpha - 20 = 0`}
+					/>, ce qui donne <KatexInline
+						formula={String.raw`\alpha = \frac{20}{72} = \frac{5}{18}`}
+					/>.
+				</p>
+			{/snippet}
+			<p>
+				Soit <KatexInline formula={String.raw`f(x_1, x_2) = x_1^2 + 2x_2^2`} />. Au point initial <KatexInline
+					formula={String.raw`x^{(0)} = (1, 1)^\top`}
+				/>, déterminez analytiquement la valeur du pas optimal <KatexInline
+					formula={String.raw`\alpha_0`}
+				/> si l'on applique une stratégie de recherche linéaire exacte.
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel number="3.6" title="Phénomène d'oscillation et conditionnement">
+			{#snippet solution()}
+				<p>
+					Le Hessien de la fonction est constant et vaut <KatexInline
+						formula={String.raw`H_f = \begin{pmatrix} 2 & 0 \\ 0 & 200 \end{pmatrix}`}
+					/>. La plus grande valeur propre (constante de Lipschitz du gradient <KatexInline
+						formula={String.raw`L`}
+					/>) est 200, et la plus petite (<KatexInline formula={String.raw`\mu`} />) est 2. Le
+					conditionnement est <KatexInline formula={String.raw`|\kappa = \frac{L}{\mu} = 100|`} />.
+					Un conditionnement élevé implique que la fonction forme une vallée très étirée, forçant la
+					descente de gradient classique à osciller fortement d'une paroi à l'autre si le pas est
+					adapté à la pente la plus raide (<KatexInline
+						formula={String.raw`\alpha \approx 1/L`}
+					/>).
+				</p>
+			{/snippet}
+			<p>
+				Soit la fonction <KatexInline formula={String.raw`f(x_1, x_2) = x_1^2 + 100x_2^2`} />.
+				Calculez le conditionnement de sa matrice Hessienne et expliquez l'impact de ce résultat sur
+				le comportement géométrique des trajectoires de la descente de gradient.
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel number="3.7" title="Gradient de la régression linéaire matricielle">
+			{#snippet solution()}
+				<p>
+					La fonction objectif se réécrit <KatexInline
+						formula={String.raw`f(w) = \frac{1}{2n} (Xw - y)^\top(Xw - y)`}
+					/>. En développant ou en utilisant les identités de calcul matriciel, on obtient :
+				</p>
+				<KatexBlock formula={String.raw`\nabla f(w) = \frac{1}{n} X^\top(Xw - y).`} />
+				<p>
+					L'étape de mise à jour de la descente de gradient prend donc la forme vectorielle suivante
+					: <KatexInline
+						formula={String.raw`w^{(k+1)} = w^{(k)} - \frac{\alpha}{n} X^\top(Xw^{(k)} - y)`}
+					/>.
+				</p>
+			{/snippet}
+			<p>
+				Soit la fonction de coût des moindres carrés <KatexInline
+					formula={String.raw`f(w) = \frac{1}{2n} \|y - Xw\|^2`}
+				/>. Retrouvez par le calcul matriciel l'expression exacte de son gradient <KatexInline
+					formula={String.raw`\nabla f(w)`}
+				/>.
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel number="3.8" title="Coût algorithmique par itération">
+			{#snippet solution()}
+				<p>
+					Le calcul de l'itéré nécessite d'abord de calculer la prédiction <KatexInline
+						formula={String.raw`Xw^{(k)}`}
+					/>, ce qui correspond au produit d'une matrice <KatexInline
+						formula={String.raw`n \times d`}
+					/> par un vecteur <KatexInline formula={String.raw`d \times 1`} />, soit un coût de <KatexInline
+						formula={String.raw`\mathcal{O}(nd)`}
+					/>. La soustraction avec <KatexInline formula={String.raw`y`} /> est en <KatexInline
+						formula={String.raw`\mathcal{O}(n)`}
+					/>. Enfin, la multiplication par <KatexInline formula={String.raw`X^\top`} /> (matrice de taille
+					<KatexInline formula={String.raw`d \times n`} /> par un vecteur <KatexInline
+						formula={String.raw`n \times 1`}
+					/>) demande à nouveau <KatexInline formula={String.raw`\mathcal{O}(nd)`} /> opérations. Le coût
+					total par itération est donc dominé par <KatexInline
+						formula={String.raw`\mathcal{O}(nd)`}
+					/>.
+				</p>
+			{/snippet}
+			<p>
+				Pour un problème de régression linéaire avec une matrice de données <KatexInline
+					formula={String.raw`X`}
+				/> de taille <KatexInline formula={String.raw`n \times d`} />, détaillez le nombre
+				d'opérations nécessaires (coût algorithmique) pour effectuer une unique itération de
+				descente de gradient batch.
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel number="3.9">
+			{#snippet titleSnippet()}
+				Interprétation du taux de convergence <KatexInline formula={String.raw`\mathcal{O}(1/k)`} />
+			{/snippet}
+			{#snippet solution()}
+				<p>
+					Le théorème garantit que <KatexInline
+						formula={String.raw`f(x^{(k)}) - f(x^*) \le \frac{C}{k}`}
+					/> où <KatexInline formula={String.raw`C = \frac{L\|x^{(0)} - x^*\|^2}{2}`} />. Pour
+					assurer une erreur inférieure ou égale à <KatexInline formula={String.raw`\epsilon`} />,
+					il suffit de choisir <KatexInline formula={String.raw`k`} /> tel que :
+				</p>
+				<KatexBlock formula={String.raw`\frac{C}{k} \le \epsilon \iff k \ge \frac{C}{\epsilon}.`} />
+				<p>
+					Le nombre d'itérations requis est donc inversement proportionnel à la précision ciblée, ce
+					qui se note <KatexInline formula={String.raw`\mathcal{O}(1/\epsilon)`} />.
+				</p>
+			{/snippet}
+			<p>
+				Pour une fonction convexe et $L$-lisse, le taux de convergence de la descente de gradient
+				est en <KatexInline formula={String.raw`\mathcal{O}(1/k)`} />. Déterminez le nombre
+				d'itérations nécessaires, exprimé en fonction de <KatexInline
+					formula={String.raw`\epsilon`}
+				/>, pour garantir que l'erreur <KatexInline formula={String.raw`f(x^{(k)}) - f(x^*)`} /> soit
+				inférieure à un seuil de tolérance <KatexInline formula={String.raw`\epsilon`} />.
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel number="3.10" title="Convergence sous forte convexité">
+			{#snippet solution()}
+				<p>
+					Sous l'hypothèse de forte convexité, le taux est géométrique (linéaire) : <KatexInline
+						formula={String.raw`f(x^{(k)}) - f(x^*) \le (1 - \frac{\mu}{L})^k (f(x^{(0)}) - f(x^*))`}
+					/>. Pour obtenir une précision <KatexInline formula={String.raw`\epsilon`} />, on résout <KatexInline
+						formula={String.raw`(1 - \frac{\mu}{L})^k \le \epsilon`}
+					/>, ce qui donne par passage au logarithme :
+				</p>
+				<KatexBlock
+					formula={String.raw`k \ge \frac{\log(1/\epsilon)}{-\log(1 - \mu/L)} \approx \frac{L}{\mu} \log(1/\epsilon).`}
+				/>
+				<p>
+					La complexité en itérations est donc en <KatexInline
+						formula={String.raw`\mathcal{O}(\log(1/\epsilon))`}
+					/>, ce qui est exponentiellement plus rapide qu'un taux en <KatexInline
+						formula={String.raw`\mathcal{O}(1/\epsilon)`}
+					/>.
+				</p>
+			{/snippet}
+			<p>
+				Si une fonction est de surcroît $\mu$-fortement convexe, son taux de convergence devient
+				linéaire (au sens de l'analyse numérique), c'est-à-dire en <KatexInline
+					formula={String.raw`\mathcal{O}(e^{-k \mu / L})`}
+				/>. Expliquez l'avantage de ce taux par rapport au cas purement convexe lors de la recherche
+				d'une précision extrêmement fine.
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel number="3.11" title="Le pas optimal théorique">
+			{#snippet solution()}
+				<p>
+					Pour une fonction quadratique fortement convexe caractérisée par les bornes spectrales <KatexInline
+						formula={String.raw`\mu`}
+					/> et <KatexInline formula={String.raw`L`} /> sur son Hessien, le pas constant qui maximise
+					le taux de contraction de l'erreur à chaque étape est donné par la formule :
+				</p>
+				<KatexBlock formula={String.raw`\alpha^* = \frac{2}{L + \mu}.`} />
+				<p>
+					Ce pas réalise le meilleur compromis possible entre la vitesse de progression le long des
+					pentes faibles et la stabilité géométrique face aux pentes raides.
+				</p>
+			{/snippet}
+			<p>
+				En optimisation quadratique, si une fonction possède un gradient $L$-Lipschitzien et est
+				$\mu$-fortement convexe, rappelez l'expression du pas constant optimal <KatexInline
+					formula={String.raw`\alpha^*`}
+				/> qui minimise le facteur de contraction de l'erreur à chaque itération.
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel number="3.12" title="Formulation vectorielle du Momentum de Polyak">
+			{#snippet solution()}
+				<p>Le système complet s'écrit de manière itérative comme suit :</p>
+				<KatexBlock
+					formula={String.raw`\begin{aligned} v^{(k+1)} &= \beta v^{(k)} + \nabla f(x^{(k)}) \\ x^{(k+1)} &= x^{(k)} - \alpha v^{(k+1)} \end{aligned}`}
+				/>
+				<p>
+					On peut également condenser cette formulation en une unique équation d'ordre 2 ne faisant
+					pas intervenir explicitement la variable intermédiaire de vitesse : <KatexInline
+						formula={String.raw`x^{(k+1)} = x^{(k)} - \alpha \nabla f(x^{(k)}) + \beta (x^{(k)} - x^{(k-1)})`}
+					/>.
+				</p>
+			{/snippet}
+			<p>
+				Donnez le système d'équations couplées définissant l'algorithme du Momentum (méthode de la
+				boule lourde de Polyak) pour la mise à jour de la position <KatexInline
+					formula={String.raw`x^{(k)}`}
+				/> et de la vitesse <KatexInline formula={String.raw`v^{(k)}`} />.
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel number="3.13" title="Déroulement de la récurrence de la vitesse">
+			{#snippet solution()}
+				<p>
+					En partant de <KatexInline formula={String.raw`v^{(0)} = 0`} />, on déroule les premières
+					étapes : <KatexInline formula={String.raw`v^{(1)} = \nabla f(x^{(0)})`} />, puis <KatexInline
+						formula={String.raw`v^{(2)} = \beta \nabla f(x^{(0)}) + \nabla f(x^{(1)})`}
+					/>. Par récurrence immédiate, on obtient la somme pondérée :
+				</p>
+				<KatexBlock
+					formula={String.raw`v^{(k)} = \sum_{i=0}^{k-1} \beta^i \nabla f(x^{(k-1-i)}).`}
+				/>
+				<p>
+					Comme <KatexInline formula={String.raw`\beta \in [0, 1)`} />, les puissances <KatexInline
+						formula={String.raw`\beta^i`}
+					/> s'estompent exponentiellement, ce qui correspond mathématiquement à une moyenne exponentielle
+					mobile des gradients passés.
+				</p>
+			{/snippet}
+			<p>
+				En supposant une vitesse initiale nulle (<KatexInline formula={String.raw`v^{(0)} = 0`} />),
+				démontrez en déroulant la récurrence du Momentum que la vitesse <KatexInline
+					formula={String.raw`v^{(k)}`}
+				/> s'exprime comme une moyenne exponentielle pondérée des gradients historiques.
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel number="3.14" title="Mécanisme d'amortissement du Momentum">
+			{#snippet solution()}
+				<p>
+					Si le gradient change de signe alternativement (oscillations), les contributions
+					successives dans la somme <KatexInline
+						formula={String.raw`\sum \beta^i \nabla f(x^{(k-1-i)})`}
+					/> ont des signes opposés et s'annulent mutuellement, réduisant ainsi l'amplitude de la vitesse
+					dans cette direction. À l'inverse, si le gradient garde un signe constant (direction de descente
+					stable), les termes se cumulent positivement, provoquant une accélération de la descente.
+				</p>
+			{/snippet}
+			<p>
+				En vous basant sur la formule de la vitesse cumulée obtenue à l'exercice précédent,
+				expliquez comment le paramètre <KatexInline formula={String.raw`\beta`} /> parvient simultanément
+				à amortir les oscillations orthogonales et à accélérer la progression dans les vallées directrices.
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel number="3.15" title="Distinction conceptuelle entre NAG et Polyak">
+			{#snippet solution()}
+				<p>
+					Le Momentum classique calcule le gradient à la position actuelle <KatexInline
+						formula={String.raw`x^{(k)}`}
+					/> puis applique la force de friction. Le Gradient Accéléré de Nesterov (NAG) effectue d'abord
+					un saut virtuel dans la direction du momentum accumulé pour se placer en un point anticipé <KatexInline
+						formula={String.raw`\tilde{x}^{(k)} = x^{(k)} + \beta(x^{(k)} - x^{(k-1)})`}
+					/>, et évalue le gradient en ce point prospectif. Cela permet d'anticiper les variations
+					de pente et de corriger la trajectoire de manière prédictive.
+				</p>
+			{/snippet}
+			<p>
+				Quelle est la différence fondamentale entre l'algorithme du Momentum de Polyak et le
+				gradient accéléré de Nesterov (NAG) concernant le point de l'espace où est évalué le
+				gradient de la fonction ?
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel number="3.16" title="Avantage asymptotique du taux de Nesterov">
+			{#snippet solution()}
+				<p>
+					Le gain est quadratique. Pour atteindre une précision <KatexInline
+						formula={String.raw`\epsilon`}
+					/>, la descente de gradient classique requiert un nombre d'itérations de l'ordre de <KatexInline
+						formula={String.raw`\mathcal{O}(1/\epsilon)`}
+					/>, tandis que la méthode accélérée de Nesterov requiert seulement <KatexInline
+						formula={String.raw`\mathcal{O}(1/\sqrt{\epsilon})`}
+					/> itérations. Pour <KatexInline formula={String.raw`\epsilon = 10^{-4}`} />, on passe
+					ainsi de l'ordre de 10 000 itérations à seulement une centaine.
+				</p>
+			{/snippet}
+			<p>
+				La méthode de Nesterov atteint le taux de convergence théorique optimal pour les fonctions
+				convexes, à savoir <KatexInline formula={String.raw`\mathcal{O}(1/k^2)`} />. Comparez ce
+				taux à celui du gradient classique (<KatexInline formula={String.raw`\mathcal{O}(1/k)`} />)
+				en matière de nombre d'itérations requises face à une tolérance d'erreur faible.
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel number="3.17" title="Conséquence d'un pas excessif">
+			{#snippet solution()}
+				<p>
+					Le gradient de <KatexInline formula={String.raw`f`} /> vaut <KatexInline
+						formula={String.raw`f'(x) = 10x`}
+					/>. La récurrence est <KatexInline
+						formula={String.raw`x^{(k+1)} = x^{(k)} - \alpha(10x^{(k)}) = (1 - 10\alpha)x^{(k)}`}
+					/>. Si <KatexInline formula={String.raw`\alpha = 0.3`} />, on obtient <KatexInline
+						formula={String.raw`1 - 10(0.3) = -2`}
+					/>. La suite des itérés devient <KatexInline
+						formula={String.raw`x^{(k)} = (-2)^k x^{(0)}`}
+					/>. En valeur absolue, <KatexInline
+						formula={String.raw`|x^{(k)}| = 2^k |x^{(0)}| \to +\infty`}
+					/> quand <KatexInline formula={String.raw`k \to \infty`} />. Les itérés oscillent d'un
+					côté à l'autre de l'origine avec une amplitude qui double à chaque étape, provoquant une
+					divergence explosive.
+				</p>
+			{/snippet}
+			<p>
+				Soit <KatexInline formula={String.raw`f(x) = 5x^2`} />, dont le gradient est
+				$10$-Lipschitzien (<KatexInline formula={String.raw`L=10`} />). Si l'on choisit un pas
+				inadéquat <KatexInline formula={String.raw`\alpha = 0.3`} /> (supérieur à <KatexInline
+					formula={String.raw`2/L`}
+				/>), calculez explicitement les premiers itérés à partir de <KatexInline
+					formula={String.raw`x^{(0)} = 1`}
+				/> et décrivez le comportement asymptotique obtenu.
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel number="3.18" title="Régime de pas décroissant">
+			{#snippet solution()}
+				<p>
+					La règle <KatexInline formula={String.raw`\alpha_k = \frac{\alpha_0}{k}`} /> satisfait les conditions
+					classiques de convergence globale pour l'optimisation stochastique ou non lisse (conditions
+					de Robbins-Monro) car la somme des pas diverge (<KatexInline
+						formula={String.raw`\sum \frac{1}{k} = +\infty`}
+					/>), permettant à l'algorithme de parcourir n'importe quelle distance pour atteindre le
+					minimum, tandis que la somme de leurs carrés converge (<KatexInline
+						formula={String.raw`\sum \frac{1}{k^2} < +\infty`}
+					/>), ce qui assure l'amortissement progressif des bruits et des oscillations en fin de
+					parcours.
+				</p>
+			{/snippet}
+			<p>
+				Pourquoi utilise-t-col fréquemment des politiques de pas décroissants de type <KatexInline
+					formula={String.raw`\alpha_k = \frac{\alpha_0}{k}`}
+				/> ? Quelles propriétés mathématiques fondamentales sur la somme de ces pas justifient ce choix
+				?
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel number="3.19" title="Gradient de la perte logistique globale">
+			{#snippet solution()}
+				<p>
+					En appliquant la linéarité de l'opérateur gradient à la fonction de perte globale <KatexInline
+						formula={String.raw`F(w) = \frac{1}{n} \sum_{i=1}^n f_i(w)`}
+					/>, on combine les gradients individuels calculés précédemment. On obtient l'expression
+					finale suivante :
+				</p>
+				<KatexBlock
+					formula={String.raw`\nabla F(w) = \frac{1}{n} \sum_{i=1}^n \frac{-y_i x_i e^{-y_i w^\top x_i}}{1 + e^{-y_i w^\top x_i}} = \frac{1}{n} \sum_{i=1}^n (\sigma(y_i w^\top x_i) - 1) y_i x_i.`}
+				/>
+			{/snippet}
+			<p>
+				En combinant les résultats sur le gradient d'une moyenne empirique et la perte élémentaire
+				de la régression logistique vus à la leçon précédente, donnez l'expression complète du
+				gradient global <KatexInline formula={String.raw`\nabla F(w)`} /> utilisé lors d'une étape de
+				descente de gradient batch sur l'ensemble d'apprentissage.
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel number="3.20" title="Synthèse des hyperparamètres">
+			{#snippet solution()}
+				<p>
+					La descente de gradient classique repose sur un unique hyperparamètre critique : le pas
+					d'apprentissage <KatexInline formula={String.raw`\alpha`} />. Les méthodes accélérées
+					(Polyak et Nesterov) introduisent un second hyperparamètre essentiel : le coefficient de
+					friction ou de momentum <KatexInline formula={String.raw`\beta \in [0, 1)`} /> (généralement
+					fixé à 0.9). Ajuster <KatexInline formula={String.raw`\beta`} /> permet de contrôler l'inertie
+					de l'optimiseur, offrant un compromis entre la vitesse de traversée des zones plates et la capacité
+					à freiner à l'approche du point d'optimum.
+				</p>
+			{/snippet}
+			<p>
+				Résumez les hyperparamètres requis par chacun des trois algorithmes étudiés (GD classique,
+				Momentum, Nesterov) et expliquez brièvement le rôle du paramètre supplémentaire introduit
+				par les méthodes accélérées.
+			</p>
 		</ExercisePanel>
 	</TheorySection>
 </PageTemplate>
