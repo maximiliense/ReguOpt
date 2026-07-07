@@ -32,7 +32,8 @@ const RAW_PAGES = [
 	// Partie III — Prédiction d'ensembles
 	{ path: '/part3/lesson1', title: 'Classification Top-K', part: 3 },
 	{ path: '/part3/lesson2', title: 'Prédiction conformelle', part: 3 },
-	{ path: '/part3/lesson3', title: 'Intervalles de prédiction', part: 3 }
+	{ path: '/part3/lesson3', title: 'Intervalles de prédiction', part: 3 },
+	{ path: '/part3/exercices', title: 'Exercices', part: 3 }
 ] as const;
 
 // 2. Hydrate indices and inject runtime resolved path property
