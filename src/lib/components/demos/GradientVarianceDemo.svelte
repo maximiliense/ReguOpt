@@ -49,7 +49,6 @@
 	}
 
 	const variances = $derived(batchSizes.map((b) => getMiniBatchVariance(b)));
-	const maxVar = $derived(Math.max(...variances, 1e-6));
 
 	// ── Log-scale bar heights ──
 	// Variance decays as 1/B, which at linear scale makes every bar past B=1
