@@ -48,35 +48,83 @@
 		{
 			id: 'coordinate-descent',
 			label: 'Coordinate Descent',
-			description: 'Optimisation coordonn\u00e9e par coordonn\u00e9e, Lasso',
+			description: 'Optimisation coordonnée par coordonnée, Lasso',
 			color: 'positive'
 		},
 		{
 			id: 'newton-raphson',
-			label: 'M\u00e9thode de Newton-Raphson',
+			label: 'Méthode de Newton-Raphson',
 			description: 'Hessienne, convergence quadratique locale',
 			color: 'surprise'
 		},
 		{
 			id: 'synthese-methodes',
-			label: 'Synth\u00e8se : quelle m\u00e9thode choisir ?',
-			description: 'Comparaison co\u00fbt/pr\u00e9cision des 4 m\u00e9thodes',
+			label: 'Synthèse : quelle méthode choisir ?',
+			description: 'Comparaison coût/précision des 4 méthodes',
 			color: 'neutral'
 		}
 	];
 
-	// ── Formules ──
-	const sgdUpdate = `x^{(k+1)} = x^{(k)} - \\alpha_k \\nabla f_{i_k}(x^{(k)})`;
-	const miniBatchUpdate = `x^{(k+1)} = x^{(k)} - \\alpha_k \\frac{1}{B} \\sum_{i \\in B_k} \\nabla f_i(x^{(k)})`;
-	const exactGradMean = `\\nabla f(x) = \\frac{1}{n} \\sum_{i=1}^n \\nabla f_i(x)`;
-	const sgdUnbiasedE = `\\mathbb{E}[\\nabla f_i(x)] = \\nabla f(x)`;
-	const cdUpdate = `x^{(k+1)}_j = \\arg\\min_{t} f(x^{(k)}_1, \\dots, t, \\dots, x^{(k)}_d)`;
-	const newtonStep = `x^{(k+1)} = x^{(k)} - [Hf(x^{(k)})]^{-1} \\nabla f(x^{(k)})`;
-	const hessDef = `Hf(x)_{ij} = \\frac{\\partial^2 f}{\\partial x_i \\partial x_j}(x)`;
-	const taylor2 = `f(y) \\approx f(x) + \\nabla f(x)^T (y - x) + \\tfrac{1}{2}(y-x)^T Hf(x)(y-x)`;
-	const rateQuadric = `\\|e_{k+1}\\| \\leq C \\|e_k\\|^2`;
-	const sgdConvergence = `\\mathbb{E}[\\|x^{(k)} - x^*\\|^2] \\to 0`;
-	const cdRate = `f(x^{(k)}) - f^* = O(d/k)`;
+	// ── Symboles atomiques ──
+	const fSym = 'f';
+	const xSym = 'x';
+	const dSym = 'd';
+	const nSym = 'n';
+	const LSym = 'L';
+	const ikSym = 'i_k';
+	const BkSym = 'B_k';
+	const BSym = 'B';
+	const alphakSym = '\\alpha_k';
+	const setOneToN = '\\{1, \\dots, n\\}';
+	const xStarSym = 'x^*';
+	const c1Sym = 'c_1';
+	const LHSym = 'L_H';
+
+	// ── Section 1 : SGD ──
+	const fMeanForm = 'f(x) = \\frac{1}{n} \\sum_{i=1}^{n} f_i(x)';
+	const sgdUpdate = 'x^{(k+1)} = x^{(k)} - \\alpha_k \\nabla f_{i_k}(x^{(k)})';
+	const miniBatchUpdate =
+		'x^{(k+1)} = x^{(k)} - \\alpha_k \\frac{1}{B} \\sum_{i \\in B_k} \\nabla f_i(x^{(k)})';
+	const exactGradMean = '\\nabla f(x) = \\frac{1}{n} \\sum_{i=1}^n \\nabla f_i(x)';
+	const sgdUnbiasedE = '\\mathbb{E}[\\nabla f_i(x)] = \\nabla f(x)';
+	const sgdUnbiasedProof =
+		'\\mathbb{E}[\\nabla f_{i_k}(x)] = \\sum_{i=1}^n \\frac{1}{n} \\nabla f_i(x) = \\nabla f(x)';
+	const sgdCostCompare = '\\text{Coût GD par pas} = n \\times \\text{Coût SGD par pas}';
+	const robbinsMonroCond =
+		'\\sum_{k=0}^{\\infty} \\alpha_k = +\\infty, \\quad \\sum_{k=0}^{\\infty} \\alpha_k^2 < +\\infty';
+	const sgdConvergence = '\\mathbb{E}[\\|x^{(k)} - x^*\\|^2] \\to 0';
+	const stepConstant = '\\alpha_k = \\alpha';
+	const stepPoly = '\\alpha_k = \\frac{\\alpha_0}{1 + \\gamma k}';
+	const stepCosine =
+		'\\alpha_k = \\frac{\\alpha_{\\min}}{2} + \\frac{\\alpha_0 - \\alpha_{\\min}}{2} \\left(1 + \\cos(\\pi k / K)\\right)';
+	const gammaPos = '\\gamma > 0';
+
+	// ── Section 2 : Coordinate Descent ──
+	const separableForm = 'f(x) = \\sum_{j=1}^d g_j(x_j)';
+	const cdUpdate = 'x^{(k+1)}_j = \\arg\\min_{t} f(x^{(k)}_1, \\dots, t, \\dots, x^{(k)}_d)';
+	const cdRate = 'f(x^{(k)}) - f^* = O(d/k)';
+	const fRdToR = 'f : \\mathbb{R}^d \\to \\mathbb{R}';
+	const softThreshold = 'x_j^{(k+1)} = \\text{sign}(z_j)\\max(|z_j| - \\lambda, 0)';
+	const lassoObjective = 'f(x) = \\tfrac{1}{2}\\|Ax - b\\|^2 + \\lambda \\|x\\|_1';
+
+	// ── Section 3 : Newton ──
+	const taylor2 =
+		'f(y) \\approx f(x) + \\nabla f(x)^\\top (y - x) + \\tfrac{1}{2}(y-x)^\\top H_f(x)(y-x)';
+	const quadModelZero = '\\nabla q(y) = 0 \\iff H_f(x)(y - x) + \\nabla f(x) = 0';
+	const newtonStep = 'x^{(k+1)} = x^{(k)} - [H_f(x^{(k)})]^{-1} \\nabla f(x^{(k)})';
+	const hessDef = 'H_f(x)_{ij} = \\frac{\\partial^2 f}{\\partial x_i \\partial x_j}(x)';
+	const rateQuadric = '\\|e_{k+1}\\| \\leq C \\|e_k\\|^2';
+	const newtonExactQuad = 'f(x) = \\tfrac{1}{2}x^\\top Q x - b^\\top x';
+	const modelEqualsF = 'q(y) \\equiv f(y)';
+	const newtonDir = 'd_k = -[H_f(x^{(k)})]^{-1}\\nabla f(x^{(k)})';
+	const armijoCond =
+		'f(x^{(k)} + \\alpha_k d_k) \\leq f(x^{(k)}) + c_1 \\alpha_k \\nabla f(x^{(k)})^\\top d_k';
+	const hessianCostCubic = 'O(d^3)';
+	const eDefNewton = 'e_k = x^{(k)} - x^*';
+
+	// ── Synthèse ──
+	const gdRateStrongConvex = 'O(\\rho^k), \\ \\rho < 1';
+	const sgdRateExpectation = 'O(1/\\sqrt{k})';
 </script>
 
 <svelte:head>
@@ -96,31 +144,50 @@
 	<TheorySection>
 		<TableOfContents entries={tocEntries} />
 
+		<h2>Introduction</h2>
+
 		<p>
-			Les trois leçons précédentes ont établi les fondements de l'optimisation sans contrainte :
-			conditions d'optimalité, propriétés des fonctions convexes, et la descente de gradient
-			standard. Nous abordons maintenant trois familles d'algorithmes essentiels en apprentissage
-			automatique, chacun adapté à une échelle ou une structure différente du problème.
+			Les trois leçons précédentes ont établi les fondements théoriques de l'optimisation sans
+			contrainte : les conditions qui caractérisent un minimum (Leçon 1), le rôle privilégié de la
+			convexité pour passer d'une garantie locale à une garantie globale (Leçon 2), et l'algorithme
+			de référence — la descente de gradient — avec sa justification par développement de Taylor
+			(Leçon 3). Cette dernière leçon de la Partie I complète ce tableau en présentant trois
+			familles d'algorithmes qui répondent chacune à une <strong>contrainte pratique</strong>
+			différente rencontrée dès qu'on quitte le cadre théorique pour appliquer ces méthodes à des problèmes
+			réels d'apprentissage automatique.
 		</p>
+
+		<p>Ces trois contraintes, et les réponses algorithmiques qui leur correspondent, sont :</p>
 
 		<ul>
 			<li>
-				<strong>SGD (Stochastic Gradient Descent)</strong> — Quand n est trop grand pour calculer le gradient
-				exact.
+				<strong>Le volume de données</strong> — quand <KatexInline formula={nSym} /> est de l'ordre du
+				million ou plus, calculer le gradient exact à chaque itération devient prohibitif. La
+				<strong>descente de gradient stochastique (SGD)</strong> répond à ce problème en remplaçant le
+				gradient exact par une estimation aléatoire, beaucoup moins coûteuse à calculer.
 			</li>
 			<li>
-				<strong>Coordinate Descent (CD)</strong> — Quand la fonction se décompose naturellement selon
-				des coordonnées.
+				<strong>La structure du problème</strong> — quand la fonction objectif se décompose
+				naturellement selon les coordonnées de la variable, ou que la régularisation utilisée (L1,
+				Lasso) a une forme explicite coordonnée par coordonnée, la
+				<strong>descente coordonnée (CD)</strong> exploite directement cette structure plutôt que de traiter
+				toutes les variables simultanément.
 			</li>
 			<li>
-				<strong>Méthode de Newton</strong> — Quand l'information Hessienne est accessible et exploitable.
+				<strong>L'information disponible</strong> — quand la fonction est deux fois différentiable
+				et que calculer sa Hessienne est réalisable, la <strong>méthode de Newton</strong> exploite l'information
+				de courbure pour converger en un nombre d'itérations spectaculairement plus faible que la simple
+				descente de gradient — au prix d'un coût de calcul par itération beaucoup plus élevé.
 			</li>
 		</ul>
 
-		<Callout type="intuition" title="Pourquoi trois méthodes ?">
-			Aucun algorithme ne domine tous les autres. Le choix dépend du coût par évaluation, de la
-			dimension du problème, et de la structure de la fonction objectif. Cette leçon montre comment
-			chaque méthode exploite une propriété différente pour converger efficacement.
+		<Callout type="intuition" title="Pourquoi trois méthodes plutôt qu'une seule ?">
+			Aucun algorithme ne domine universellement tous les autres. Le choix dépend du coût par
+			évaluation de gradient (ou de Hessienne), de la dimension du problème, et de la structure de
+			la fonction objectif. Cette leçon montre comment chaque méthode exploite une propriété
+			différente du problème pour converger efficacement — et, tout aussi important, dans quelles
+			circonstances chacune devient impraticable. La section de synthèse en fin de leçon compare
+			explicitement les quatre méthodes vues dans cette partie (GD compris) sur ces critères.
 		</Callout>
 	</TheorySection>
 
@@ -131,144 +198,214 @@
 	<TheorySection>
 		<h2 id="sgd">1. Descente de gradient stochastique (SGD)</h2>
 
-		<p>Supposons que la fonction objectif s'écrive comme une moyenne empirique :</p>
+		<p>
+			En apprentissage automatique, la fonction objectif à minimiser est presque toujours une
+			<strong>moyenne empirique</strong> sur un ensemble d'exemples d'entraînement :
+		</p>
 
-		<KatexBlock formula={`f(x) = \\frac{1}{n} \\sum_{i=1}^{n} f_i(x)`} />
+		<KatexBlock formula={fMeanForm} />
 
-		où chaque <KatexInline formula={`f_i`} /> représente la perte sur un échantillon de données. C'est
-		le cas typique en apprentissage automatique : les <KatexInline formula={`f_i`} /> sont convexes mais
-		<KatexInline formula={`f`} /> peut être très difficile à optimiser si n est de l'ordre du million
-		ou plus.
-	</TheorySection>
+		<p>
+			où chaque <KatexInline formula={String.raw`f_i`} /> représente la perte du modèle sur l'exemple
+			<KatexInline formula={String.raw`i`} /> (c'est exactement la structure étudiée en détail dans la
+			Leçon 2, où nous avions vu que la convexité, la différentiabilité et la coercivité se transmettent
+			de chaque terme <KatexInline formula={String.raw`f_i`} /> à la moyenne <KatexInline
+				formula={fSym}
+			/>). Chaque <KatexInline formula={String.raw`f_i`} /> pris individuellement est en général une fonction
+			simple et peu coûteuse à différentier. Le problème vient du nombre de termes : dès que <KatexInline
+				formula={nSym}
+			/> atteint quelques centaines de milliers — ce qui est la norme, pas l'exception, en apprentissage
+			moderne —
+			<strong>chaque évaluation du gradient exact</strong> nécessite de parcourir l'intégralité du jeu
+			de données. Une seule itération de descente de gradient standard devient alors elle-même un calcul
+			coûteux, avant même de parler du nombre d'itérations nécessaires pour converger.
+		</p>
 
-	<TheorySection>
 		<h3>1.1 L'idée centrale : remplacer le gradient exact par une estimation</h3>
 
-		<p>Plutôt que de calculer le gradient complet :</p>
+		<p>
+			L'idée de SGD est aussi simple que radicale : plutôt que de calculer, à chaque itération, le
+			gradient complet
+		</p>
 
 		<KatexBlock formula={exactGradMean} />
 
-		on choisit un indice aléatoire <KatexInline formula={`i_k`} /> à chaque itération et on utilise :
-	</TheorySection>
+		<p>
+			on tire un unique indice aléatoire <KatexInline formula={ikSym} /> et on utilise le gradient d'un
+			seul terme, <KatexInline formula={String.raw`\nabla f_{i_k}(x)`} />, comme
+			<em>estimation</em>
+			du gradient complet. Le coût d'une itération passe ainsi de <KatexInline
+				formula={String.raw`O(n)`}
+			/> évaluations de gradient à <KatexInline formula={String.raw`O(1)`} /> :
+		</p>
+		<KatexBlock formula={sgdCostCompare} />
 
-	<DefinitionBlock number="4.1" title="Plein-gradient Stochastique (SGD)">
-		Soit <KatexInline formula={`f(x) = \\frac{1}{n}\\sum_{i=1}^n f_i(x)`} /> avec chaque <KatexInline
-			formula={`f_i`}
-		/> différentiable. L'algorithme SGD itère :
+		<DefinitionBlock number="4.1" title="Descente de gradient stochastique (SGD)">
+			<p>
+				Soit <KatexInline formula={fMeanForm} /> avec chaque <KatexInline formula="f_i" />
+				différentiable. L'algorithme SGD itère :
+			</p>
+			<KatexBlock formula={sgdUpdate} />
+			<p>
+				où <KatexInline formula={ikSym} /> est tiré uniformément dans <KatexInline
+					formula={setOneToN}
+				/>, et <KatexInline formula={String.raw`(\alpha_k)_{k \geq 0}`} /> est une suite de pas positifs.
+			</p>
+		</DefinitionBlock>
 
-		<KatexBlock formula={sgdUpdate} />
+		<p>
+			À première vue, remplacer le vrai gradient par un seul terme choisi au hasard semble une
+			approximation grossière — et de fait, la direction suivie à chaque itération individuelle peut
+			être très éloignée de la véritable direction de plus forte pente. Ce qui rend la méthode
+			viable n'est pas la précision d'un pas isolé, mais une propriété statistique de l'estimateur,
+			valable en moyenne sur de nombreuses itérations.
+		</p>
 
-		où <KatexInline formula={`i_k`} /> est tiré uniformément dans <KatexInline
-			formula="{`\\{1, \\dots, n\\}`},"
-		/> et
-		<KatexInline formula={`(\\alpha_k)_{k \\geq 0}`} /> est une suite de pas positifs.
-	</DefinitionBlock>
+		<TheoremBlock number="4.2" title="L'estimateur SGD est sans biais">
+			<p>
+				Pour tout <KatexInline formula={xSym} />, l'espérance du gradient stochastique coïncide avec
+				le gradient exact :
+			</p>
+			<KatexBlock formula={sgdUnbiasedE} />
 
-	<TheoremBlock number="4.2" title="L'estimateur SGD est sans biais">
-		Pour tout <KatexInline formula={`x`} />, l'espérance du gradient stochastique coïncide avec le
-		gradient exact :
+			<Callout type="proof" title="Esquisse de démonstration">
+				<p>
+					Puisque <KatexInline formula={ikSym} /> est uniforme sur <KatexInline
+						formula={setOneToN}
+					/> :
+				</p>
+				<KatexBlock formula={sgdUnbiasedProof} />
+			</Callout>
 
-		<KatexBlock formula={sgdUnbiasedE} />
+			<p>
+				Ce résultat justifie que SGD suit globalement la bonne direction : chaque pas individuel est
+				bruité, mais en espérance, il pointe exactement là où pointerait le gradient exact. Le bruit
+				s'annule en moyenne sans jamais biaiser systématiquement la trajectoire dans une mauvaise
+				direction.
+			</p>
+		</TheoremBlock>
 
-		<Callout type="proof" title="Esquisse de démonstration">
-			Puisque <KatexInline formula={`i_k`} /> est uniforme sur <KatexInline
-				formula="{`\\{1, \\dots, n\\}`},"
-			/> :
-
-			<KatexBlock
-				formula={`\\mathbb{E}[\\nabla f_{i_k}(x)] = \\sum_{i=1}^n \\frac{1}{n} \\nabla f_i(x) = \\nabla f(x)`}
-			/>
+		<Callout type="intuition" title="Le compromis coût / bruit en une phrase">
+			Le calcul d'une seule étape de GD nécessite l'évaluation du gradient sur les <KatexInline
+				formula={nSym}
+			/> données, tandis qu'un pas de SGD utilise un seul échantillon. Une itération de GD est donc
+			<KatexInline formula={nSym} /> fois plus coûteuse qu'une itération de SGD — mais chaque pas de SGD
+			est beaucoup plus bruité. L'expérience ci-dessous permet de visualiser directement ce compromis
+			: la trajectoire de SGD est visiblement plus erratique que celle de GD, mais progresse à une vitesse
+			comparable en termes de temps de calcul total.
 		</Callout>
 
-		Ce résultat justifie que SGD suit globalement la bonne direction, malgré le bruit.
-	</TheoremBlock>
+		<InteractiveSection tag="Comparer">
+			<SGDvsGDComparison />
+		</InteractiveSection>
 
-	<Callout type="intuition">
-		Le calcul d'une seule étape de GD nécessite l'évaluation du gradient sur les <KatexInline
-			formula={`N`}
-		/>
-		données, tandis qu'un pas de SGD utilise un seul échantillon. Une itération de GD est donc
-		<KatexInline formula={`N`} /> fois plus coûteuse qu'une itération de SGD.
-	</Callout>
+		<!-- ═══════════════════════════════════════ -->
+		<!-- SECTION 1.2 — Mini-batch SGD            -->
+		<!-- ═══════════════════════════════════════ -->
 
-	<InteractiveSection tag="Comparer">
-		<SGDvsGDComparison />
-	</InteractiveSection>
-
-	<!-- ═══════════════════════════════════════ -->
-	<!-- SECTION 1.2 — Mini-batch SGD            -->
-	<!-- ═══════════════════════════════════════ -->
-
-	<TheorySection>
 		<h3>1.2 Mini-batch : le compromis pratique</h3>
 
 		<p>
-			Le SGD pur (B=1) est très bruité. À l'inverse, le gradient exact (B=n) est trop coûteux. La
-			solution standard consiste à utiliser des mini-lots :
+			Entre les deux extrêmes — le SGD pur, qui utilise un seul échantillon et produit une
+			trajectoire très bruitée, et le gradient exact, dont le coût par itération explose avec
+			<KatexInline formula={nSym} /> — la pratique standard consiste à utiliser un
+			<strong>mini-lot</strong> (mini-batch) de taille intermédiaire.
 		</p>
 
 		<DefinitionBlock number="4.3" title="Mini-batch Gradient Descent">
-			Soit <KatexInline formula={`B_k`} /> un sous-ensemble aléatoire de taille B tiré de <KatexInline
-				formula="{`\\{1, \\dots, n\\}`},"
-			/> l'itération est :
-
+			<p>
+				Soit <KatexInline formula={BkSym} /> un sous-ensemble aléatoire de taille <KatexInline
+					formula={BSym}
+				/> tiré de <KatexInline formula={setOneToN} />. L'itération est :
+			</p>
 			<KatexBlock formula={miniBatchUpdate} />
 		</DefinitionBlock>
 
+		<p>
+			Cette formule interpole exactement entre les deux cas extrêmes : en posant <KatexInline
+				formula="B=1"
+			/>, on retrouve le SGD pur (Définition 4.1) ; en posant <KatexInline formula="B=n" />, on
+			retrouve le gradient exact. Le paramètre <KatexInline formula={BSym} /> permet donc de choisir continûment
+			un point sur ce spectre.
+		</p>
+
 		<Callout type="intuition" title="Le compromis coût / variance">
-			Cette formule interpole entre SGD pur (B=1) et le gradient exact (B=n). En pratique, B ∈ [8,
-			256] donne le meilleur rapport précision/coût. Augmenter B réduit la variance du bruit mais
-			augmente proportionnellement le coût d'un pas.
+			En pratique, <KatexInline formula="B \in [8, 256]" /> donne le meilleur rapport précision/coût pour
+			la plupart des applications de deep learning. Augmenter <KatexInline formula={BSym} /> réduit la
+			variance du bruit de gradient — approximativement selon une loi en <KatexInline
+				formula="1/B"
+			/>, comme le montre le graphique interactif ci-dessous — mais augmente proportionnellement le
+			coût de calcul d'un pas. Doubler la taille du batch ne fait donc pas nécessairement progresser
+			deux fois plus vite : cela réduit le bruit tout en doublant le coût, un arbitrage qui dépend
+			du problème et du matériel disponible.
 		</Callout>
-	</TheorySection>
 
-	<InteractiveSection tag="Explorer">
-		<GradientVarianceDemo />
-	</InteractiveSection>
+		<InteractiveSection tag="Explorer">
+			<GradientVarianceDemo />
+		</InteractiveSection>
 
-	<!-- ═══════════════════════════════════════ -->
-	<!-- SECTION 1.3 — Convergence du SGD        -->
-	<!-- ═══════════════════════════════════════ -->
+		<!-- ═══════════════════════════════════════ -->
+		<!-- SECTION 1.3 — Convergence du SGD        -->
+		<!-- ═══════════════════════════════════════ -->
 
-	<TheorySection>
 		<h3>1.3 Convergence asymptotique du SGD</h3>
 
 		<p>
-			Pour garantir la convergence, le pas <KatexInline formula={`\\alpha_k`} /> doit décroître suffisamment
-			vite pour amortir le bruit, mais assez lentement pour permettre l'exploration de l'espace.
+			Le caractère sans biais de l'estimateur (Théorème 4.2) ne suffit pas, à lui seul, à garantir
+			la convergence de l'algorithme : un estimateur non biaisé mais dont le bruit ne diminue jamais
+			peut très bien osciller indéfiniment autour du minimum sans jamais s'en approcher. C'est le
+			rôle de la suite de pas <KatexInline formula={alphakSym} /> : elle doit décroître suffisamment vite
+			pour amortir progressivement le bruit stochastique, mais rester assez grande, assez longtemps, pour
+			permettre à l'algorithme d'explorer l'espace et de ne pas se figer prématurément loin de l'optimum.
 		</p>
+
+		<TheoremBlock number="4.4" title="Convergence du SGD — conditions de Robbins-Monro">
+			<p>
+				Soit <KatexInline formula={fSym} /> convexe et <KatexInline formula={LSym} />
+				-lipschitzienne. Si la suite de pas satisfait :
+			</p>
+			<KatexBlock formula={robbinsMonroCond} />
+			<p>
+				alors <KatexInline formula={sgdConvergence} /> (convergence en espérance).
+			</p>
+		</TheoremBlock>
+
+		<p>
+			Ces deux conditions ont chacune un rôle précis, qu'il vaut la peine de dissocier. La première,
+			<KatexInline formula="\sum \alpha_k = +\infty" />, garantit que la somme cumulée des pas est
+			suffisamment grande pour que l'algorithme puisse parcourir n'importe quelle distance finie
+			depuis son point de départ — sans elle, les pas pourraient décroître trop vite et l'algorithme
+			resterait bloqué avant d'atteindre l'optimum. La seconde, <KatexInline
+				formula="\sum \alpha_k^2 < +\infty"
+			/>, garantit que le bruit accumulé au fil des itérations reste borné — sans elle, la variance
+			du bruit stochastique ne s'amortirait jamais et empêcherait toute convergence précise.
+		</p>
+
+		<ExampleBlock number="4.5" title="Plans de décroissance classiques">
+			<ul>
+				<li>
+					<strong>Pas constant :</strong>
+					<KatexInline formula={stepConstant} /> — ne satisfait pas Robbins-Monro (la seconde somme diverge),
+					et converge donc seulement vers un
+					<strong>voisinage</strong> de l'optimum, pas exactement vers lui. C'est néanmoins le choix le
+					plus courant en deep learning, où l'on privilégie souvent la vitesse initiale à la précision
+					asymptotique exacte.
+				</li>
+				<li>
+					<strong>Décroissance polynomiale :</strong>
+					<KatexInline formula={stepPoly} /> — satisfait les conditions de Robbins-Monro pour tout
+					<KatexInline formula={gammaPos} />, et garantit donc la convergence exacte en espérance.
+				</li>
+				<li>
+					<strong>Cosine annealing :</strong>
+					<KatexInline formula={stepCosine} /> — ne satisfait pas non plus Robbins-Monro au sens strict
+					(le pas ne tend généralement pas vers 0 sur un horizon fini <KatexInline formula="K" />),
+					mais est très populaire en deep learning car elle combine une décroissance progressive
+					avec des redémarrages permettant d'échapper à des minima locaux médiocres.
+				</li>
+			</ul>
+		</ExampleBlock>
 	</TheorySection>
-
-	<TheoremBlock number="4.4" title="Convergence du SGD — conditions Robbins-Monro">
-		Soit <KatexInline formula={`f`} /> convexe et <KatexInline formula={`L`} />-lipschitzienne. Si :
-
-		<KatexBlock
-			formula={`\\sum_{k=0}^{\\infty} \\alpha_k = +\\infty, \\quad \\sum_{k=0}^{\\infty} \\alpha_k^2 < +\\infty`}
-		/>
-
-		alors <KatexInline formula={sgdConvergence} /> (convergence en espérance).
-	</TheoremBlock>
-
-	<ExampleBlock number="4.5" title="Plans de décroissance classiques">
-		<ul>
-			<li>
-				<strong>Pas constant :</strong>
-				<KatexInline formula={`\\alpha_k = \\alpha`} /> — converge vers un voisinage de l'optimum, pas
-				exactement.
-			</li>
-			<li>
-				<strong>Décroissance polynomiale :</strong>
-				<KatexInline formula={`\\alpha_k = \\frac{\\alpha_0}{1 + \\gamma k}`} /> — satisfait Robbins-Monro
-				pour tout <KatexInline formula={`\\gamma > 0`} />.
-			</li>
-			<li>
-				<strong>Cosine annealing :</strong>
-				<KatexInline
-					formula={`\\alpha_k = \\frac{\\alpha_{min}}{2} + \\frac{\\alpha_0 - \\alpha_{min}}{2} (1 + \\cos(\\pi k / K))`}
-				/> — populaire en deep learning.
-			</li>
-		</ul>
-	</ExampleBlock>
 
 	<!-- ═══════════════════════════════════════ -->
 	<!-- SECTION 2 — Coordinate Descent          -->
@@ -278,54 +415,105 @@
 		<h2 id="coordinate-descent">2. Coordinate Descent (Descente coordonnée)</h2>
 
 		<p>
-			La descente coordonnée est une stratégie itérative qui, à chaque pas, ne modifie qu'une seule
-			composante de la variable d'optimisation. Elle est particulièrement efficace lorsque :
+			SGD répond à une contrainte de <em>volume</em> : trop d'exemples pour calculer un gradient
+			exact à chaque pas. La descente coordonnée (CD) répond à une contrainte différente, de
+			<em>structure</em> : plutôt que de mettre à jour simultanément les <KatexInline
+				formula={dSym}
+			/> composantes de la variable d'optimisation, on ne modifie qu'une seule composante à la fois, en
+			la fixant à sa valeur optimale exacte étant donné toutes les autres.
 		</p>
+
+		<p>Cette stratégie est particulièrement efficace lorsque :</p>
 		<ul>
-			<li>Le calcul du gradient complet est coûteux</li>
 			<li>
-				La fonction se décompose naturellement en coordonnées (ex : <KatexInline
-					formula={`f(x) = \\sum g_j(x_j)`}
-				/>)
+				Le calcul du gradient complet est coûteux, mais la minimisation le long d'un seul axe est
+				simple ;
 			</li>
 			<li>
-				La régularisation L1 induit des solutions creuses — CD exploite cette structure
-				explicitement
+				La fonction se décompose naturellement en une somme séparable par coordonnées, <KatexInline
+					formula={separableForm}
+				/> ;
+			</li>
+			<li>
+				La régularisation L1 (Lasso) induit des solutions creuses — CD exploite cette structure
+				explicitement, comme le montre l'Exemple 4.6.1 ci-dessous.
 			</li>
 		</ul>
 
 		<DefinitionBlock number="4.6" title="Coordinate Descent cyclique">
-			Soit <KatexInline formula={`f : \\mathbb{R}^d \\to \\mathbb{R}`} />. À chaque itération k, on
-			choisit une coordonnée <KatexInline formula={`j_k`} /> (par cycle : 1,2,...,d,1,2,...) et on met
-			à jour :
-
+			<p>
+				Soit <KatexInline formula={fRdToR} />. À chaque itération <KatexInline formula="k" />, on
+				choisit une coordonnée <KatexInline formula="j_k" /> (par cycle : <KatexInline
+					formula="1,2,\dots,d,1,2,\dots"
+				/>) et on met à jour :
+			</p>
 			<KatexBlock formula={cdUpdate} />
+			<p>
+				Autrement dit, on résout exactement le problème de minimisation à une seule variable obtenu
+				en fixant toutes les autres coordonnées de <KatexInline formula={String.raw`x^{k}`} /> à leur
+				valeur courante.
+			</p>
 		</DefinitionBlock>
-	</TheorySection>
 
-	<InteractiveSection tag="Animer">
-		<CoordinateDescentAnim />
-	</InteractiveSection>
+		<p>
+			L'outil interactif ci-dessous anime cette procédure sur une fonction à deux variables : à
+			chaque étape, on observe la trajectoire se déplacer strictement le long de l'axe <KatexInline
+				formula="x"
+			/> ou de l'axe <KatexInline formula="y" />, jamais en diagonale — c'est la signature visuelle
+			caractéristique de CD, très différente du chemin plus direct suivi par la descente de gradient
+			classique.
+		</p>
 
-	<TheorySection>
+		<InteractiveSection tag="Animer">
+			<CoordinateDescentAnim />
+		</InteractiveSection>
+
 		<h3>2.1 Analyse théorique</h3>
+
+		<TheoremBlock number="4.7" title="Convergence du CD cyclique">
+			<p>
+				Soit <KatexInline formula={fSym} /> convexe, <KatexInline formula="C^1" />-lipschitzienne
+				par coordonnée avec constante <KatexInline formula="L_j" /> pour chaque coordonnée <KatexInline
+					formula="j"
+				/>. Alors :
+			</p>
+			<KatexBlock formula={cdRate} />
+			<p>
+				Le taux dépend linéairement de la dimension <KatexInline formula={dSym} /> — c'est le prix à payer
+				pour n'optimiser qu'une seule coordonnée à la fois : il faut, en quelque sorte,
+				<KatexInline formula={dSym} /> fois plus d'itérations pour que chaque coordonnée ait eu l'occasion
+				d'être mise à jour un nombre comparable de fois.
+			</p>
+		</TheoremBlock>
+
+		<ExampleBlock number="4.7.1" title="Coordinate descent pour le Lasso">
+			<p>
+				Considérons l'objectif Lasso : <KatexInline formula={lassoObjective} />, avec <KatexInline
+					formula="\lambda > 0"
+				/>. Bien que le terme <KatexInline formula="\|x\|_1" /> ne soit pas différentiable en
+				<KatexInline formula="0" />, la minimisation exacte le long d'une seule coordonnée <KatexInline
+					formula="x_j"
+				/> (en fixant les autres) admet une solution explicite, appelée
+				<strong>seuillage doux</strong> (soft-thresholding) :
+			</p>
+			<KatexBlock formula={softThreshold} />
+			<p>
+				où <KatexInline formula="z_j" /> est la valeur qui minimiserait le terme quadratique seul. Cette
+				formule explicite est exactement ce qui rend CD si naturel pour le Lasso : chaque mise à jour
+				de coordonnée a un coût de calcul minime, et le résultat révèle directement quelles coordonnées
+				sont poussées à exactement zéro (d'où la sparsité de la solution), sans qu'aucune approximation
+				itérative supplémentaire ne soit nécessaire à chaque pas.
+			</p>
+		</ExampleBlock>
+
+		<Callout type="intuition" title="Pourquoi CD marche bien en pratique">
+			Dans les problèmes de régression Lasso, chaque mise à jour coordonnée a une forme explicite
+			(seuillage doux), comme on vient de le voir. Cela rend CD non seulement efficace, mais aussi
+			<strong>interprétable</strong> : on observe directement, coordonnée par coordonnée, quelles variables
+			deviennent nulles et lesquelles restent actives — une transparence rarement disponible avec les
+			méthodes de gradient classiques appliquées à des objectifs non lisses.
+		</Callout>
 	</TheorySection>
-
-	<TheoremBlock number="4.7" title="Convergence du CD cyclique">
-		Soit <KatexInline formula={`f`} /> convexe, <KatexInline formula={`C^1`} />-lipschitzienne par
-		coordonnée avec constante L_j. Alors :
-
-		<KatexBlock formula={cdRate} />
-
-		Le taux dépend linéairement de la dimension d — c'est le prix à payer pour optimiser une seule
-		coordonnée à la fois.
-	</TheoremBlock>
-
-	<Callout type="intuition" title="Pourquoi CD marche bien en pratique">
-		Dans les problèmes de régression Lasso (L1), chaque mise à jour coordonnée a une forme explicite
-		: un seuillage mou (soft-thresholding). Cela rend CD non seulement efficace, mais aussi
-		interprétable — on voit exactement quelles variables deviennent nulles.
-	</Callout>
 
 	<!-- ═══════════════════════════════════════ -->
 	<!-- SECTION 3 — Méthode de Newton           -->
@@ -335,91 +523,142 @@
 		<h2 id="newton-raphson">3. La méthode de Newton-Raphson</h2>
 
 		<p>
-			La descente de gradient n'utilise que l'information du premier ordre (gradient). La méthode de
-			Newton exploite la structure locale de la fonction via son développement de Taylor d'ordre 2 :
+			SGD et CD répondent toutes deux à des contraintes de coût ou de structure en simplifiant
+			<em>chaque itération</em> — mais elles n'exploitent, comme la descente de gradient classique,
+			que l'information du <strong>premier ordre</strong> : la direction du gradient. La méthode de Newton
+			prend le chemin inverse : elle accepte un coût par itération beaucoup plus élevé en échange d'une
+			information beaucoup plus riche, la courbure locale de la fonction, capturée par sa matrice Hessienne.
+			Cette information provient directement du développement de Taylor à l'ordre 2, déjà rencontré dans
+			la démonstration de la CSSO en Leçon 1 :
 		</p>
 
 		<KatexBlock formula={taylor2} />
-	</TheorySection>
 
-	<TheorySection>
 		<p>
-			L'idée est simple : approximer <KatexInline formula={`f`} /> par un quadratique localement, puis
-			en trouver le minimum exact.
+			L'idée de Newton est de prendre cette approximation quadratique <em>au sérieux</em> : plutôt
+			que de simplement suivre la direction de plus forte pente comme le fait la descente de
+			gradient, on calcule directement le minimum exact de ce modèle quadratique local, noté
+			<KatexInline formula="q(y)" />, et on saute directement à ce point.
 		</p>
 
-		<p>Le minimum du modèle quadratique satisfait :</p>
+		<p>Le minimum du modèle quadratique satisfait la condition du premier ordre :</p>
 
-		<KatexBlock formula={`\\nabla q(y) = 0 \\iff Hf(x)(y - x) + \\nabla f(x) = 0`} />
+		<KatexBlock formula={quadModelZero} />
 
-		Ce qui donne directement la direction de Newton :
-	</TheorySection>
+		<p>
+			En résolvant cette équation linéaire pour <KatexInline formula="y" />, on obtient directement
+			la direction de Newton :
+		</p>
 
-	<DefinitionBlock number="4.8" title="Méthode de Newton (sans amortissement)">
-		Soit <KatexInline formula="{`f \\in C^2`}," /> strictement convexe avec Hessienne inversible. L'itération
-		est :
+		<DefinitionBlock number="4.8" title="Méthode de Newton (sans amortissement)">
+			<p>
+				Soit <KatexInline formula="f \in C^2" />, strictement convexe, avec Hessienne inversible.
+				L'itération est :
+			</p>
+			<KatexBlock formula={newtonStep} />
+			<p>où l'Hessienne est la matrice des dérivées secondes :</p>
+			<KatexBlock formula={hessDef} />
+		</DefinitionBlock>
 
-		<KatexBlock formula={newtonStep} />
+		<p>
+			Comparée à la descente de gradient (<KatexInline
+				formula={String.raw`x^{k + 1} = x^{k} - \alpha \nabla f(x^{k})`}
+			/>), la différence structurelle est que le pas n'est plus scalaire (<KatexInline
+				formula="\alpha"
+			/>) mais une transformation linéaire complète de l'espace, donnée par l'inverse de la
+			Hessienne. C'est précisément cette transformation qui permet à Newton de "voir" la courbure
+			différente selon chaque direction — un avantage majeur sur des fonctions dont les courbes de
+			niveau sont très allongées, où le gradient seul indique souvent une direction de descente très
+			inefficace.
+		</p>
 
-		où l'Hessienne est la matrice des dérivées secondes :
+		<InteractiveSection tag="Animer">
+			<NewtonAnimator />
+		</InteractiveSection>
 
-		<KatexBlock formula={hessDef} />
-	</DefinitionBlock>
-
-	<InteractiveSection tag="Animer">
-		<NewtonAnimator />
-	</InteractiveSection>
-
-	<!-- ═══════════════════════════════════════ -->
-	<!-- SECTION 3.2 — Convergence quadratique   -->
-	<!-- ═══════════════════════════════════════ -->
-
-	<TheorySection>
 		<h3>3.1 Propriété fondamentale : convergence quadratique</h3>
-	</TheorySection>
 
-	<TheoremBlock number="4.9" title="Convergence quadratique locale">
-		Soit <KatexInline formula="{`f \\in C^2`}," /> strictement convexe, avec <KatexInline
-			formula={`x^*`}
-		/> minimum global. Si l'Hessienne est <KatexInline formula={`L_H`} />-lipschitzienne autour de <KatexInline
-			formula={String.raw`x^*`}
-		/>, alors pour tout point initial suffisamment proche :
+		<p>
+			La propriété qui rend Newton si attractif — et qui justifie son coût élevé par itération — est
+			sa vitesse de convergence locale, qualitativement différente de celle des méthodes de premier
+			ordre.
+		</p>
 
-		<KatexBlock formula={rateQuadric} />
+		<TheoremBlock number="4.9" title="Convergence quadratique locale">
+			<p>
+				Soit <KatexInline formula="f \in C^2" />, strictement convexe, avec <KatexInline
+					formula={xStarSym}
+				/> minimum global. Notons <KatexInline formula={eDefNewton} /> l'erreur à l'itération <KatexInline
+					formula="k"
+				/>. Si l'Hessienne est <KatexInline formula={LHSym} />-lipschitzienne autour de <KatexInline
+					formula={xStarSym}
+				/>, alors pour tout point initial suffisamment proche de <KatexInline formula={xStarSym} /> :
+			</p>
+			<KatexBlock formula={rateQuadric} />
+			<p>
+				Cela signifie que le nombre de chiffres significatifs corrects <strong>double</strong> à chaque
+				itération, une fois suffisamment proche de l'optimum — une vitesse de convergence sans commune
+				mesure avec la convergence linéaire (au mieux) de la descente de gradient.
+			</p>
+		</TheoremBlock>
 
-		Cela signifie que le nombre de chiffres significatifs corrects double à chaque itération.
-	</TheoremBlock>
+		<Callout type="intuition" title="Newton sur un quadratique pur">
+			<p>
+				Si <KatexInline formula={newtonExactQuad} />, le modèle de Taylor d'ordre 2 est exact — non
+				pas une approximation locale, mais une égalité valable sur tout l'espace :
+				<KatexInline formula={modelEqualsF} />. Newton converge donc en un seul pas, quelle que soit
+				l'inclinaison ou le conditionnement de la fonction quadratique : l'Hessienne est constante
+				et l'approximation quadratique est parfaite partout, pas seulement au voisinage du point
+				courant.
+			</p>
+			<p>
+				Sur une fonction non quadratique (par exemple Rosenbrock), cette exactitude disparaît :
+				Newton a besoin de plusieurs itérations, mais leur nombre de chiffres corrects double
+				néanmoins rapidement une fois suffisamment proche du minimum — c'est exactement le phénomène
+				que l'animation ci-dessus permet d'observer directement en comparant plusieurs fonctions
+				test.
+			</p>
+		</Callout>
 
-	<Callout type="intuition" title="Newton sur un quadratique pur">
-		Si <KatexInline formula={`f(x) = \\tfrac{1}{2}x^T Q x - b^T x`} />, le modèle de Taylor d'ordre
-		2 est exact : <KatexInline formula="{`q(y) \\equiv f(y)`}," />. Newton converge donc en un seul
-		pas — l'Hessienne est constante et l'approximation quadratique est parfaite.
-	</Callout>
-
-	<TheorySection>
 		<h3>3.2 Amortissement et recherche de ligne</h3>
 
 		<p>
-			Lorsque <KatexInline formula={`x^{(k)}`} /> n'est pas proche du minimum, la direction de Newton
-			peut être mal conditionnée ou ne pas être une direction de descente. On utilise alors :
+			Le Théorème 4.9 est un résultat <strong>local</strong> : il ne s'applique que "pour tout point initial
+			suffisamment proche" du minimum. Loin de l'optimum, la direction de Newton peut être mal conditionnée,
+			voire pointer dans une direction qui n'est pas du tout une direction de descente — en particulier
+			si l'Hessienne n'est pas définie positive en ce point (un point-selle, par exemple, comme ceux rencontrés
+			dans les contre-exemples de la Leçon 1). Pour rendre la méthode robuste sur tout le domaine, et
+			pas seulement près du minimum, on introduit un pas amorti :
 		</p>
+
+		<DefinitionBlock number="4.10" title="Newton amorti (Damped Newton)">
+			<p>
+				Calculer la direction de Newton <KatexInline formula={newtonDir} />, puis chercher un pas
+				<KatexInline formula="\alpha_k > 0" /> satisfaisant la condition d'Armijo :
+			</p>
+			<KatexBlock formula={armijoCond} />
+			<p>
+				où <KatexInline formula={c1Sym} /> est une petite constante (typiquement <KatexInline
+					formula="10^{-4}"
+				/>). Cette condition garantit que le pas choisi produit une décroissance suffisante de <KatexInline
+					formula={fSym}
+				/>, même quand le pas complet <KatexInline formula="\alpha_k = 1" /> (celui utilisé dans la Définition
+				4.8) ne le ferait pas.
+			</p>
+		</DefinitionBlock>
+
+		<Callout type="warning" title="Limites de Newton en grande dimension">
+			L'Hessienne est une matrice <KatexInline formula="d \times d" />. Son inversion coûte
+			<KatexInline formula={hessianCostCubic} /> — un coût cubique en la dimension, à comparer au coût
+			linéaire <KatexInline formula="O(d)" /> d'un pas de gradient ou de CD. En apprentissage automatique,
+			où <KatexInline formula="d" /> peut dépasser le million de paramètres (un réseau de neurones typique,
+			par exemple), la méthode de Newton exacte est tout simplement inapplicable : stocker la Hessienne
+			elle-même (<KatexInline formula="d^2" /> nombres) dépasserait déjà la mémoire disponible. On utilise
+			alors des variantes qui n'exigent pas de former ni d'inverser la Hessienne complète : Quasi-Newton
+			(BFGS et ses variantes à mémoire limitée comme L-BFGS), gradient conjugué non linéaire, ou des approximations
+			diagonales de la Hessienne (utilisées par exemple dans Adam).
+		</Callout>
 	</TheorySection>
-
-	<DefinitionBlock number="4.10" title="Newton amorti (Damped Newton)">
-		Calculer la direction <KatexInline formula={`d_k = -[Hf(x^{(k)})]^{-1}\\nabla f(x^{(k)})`} />,
-		puis chercher un pas <KatexInline formula={`\\alpha_k > 0`} /> satisfaisant la condition d'Armijo
-		:
-
-		<KatexBlock
-			formula={`f(x^{(k)} + \\alpha_k d_k) \\leq f(x^{(k)}) + c_1 \\alpha_k \\nabla f(x^{(k)})^T d_k`}
-		/>
-	</DefinitionBlock>
-
-	<Callout type="warning" title="Limites de Newton en grande dimension">
-		L'Hessienne est une matrice d × d. Son inversion coûte O(d³). En apprentissage automatique où d
-		peut dépasser 10⁶, la méthode de Newton exacte est inapplicable. On utilise alors des variantes
-		: Quasi-Newton (BFGS), Newton conjugué, ou des approximations diagonales de l'Hessienne.
-	</Callout>
 
 	<!-- ═══════════════════════════════════════ -->
 	<!-- SECTION 4 — SYNTHÈSE COMPARATIVE        -->
@@ -428,7 +667,13 @@
 	<TheorySection>
 		<h2 id="synthese-methodes">4. Synthèse : quelle méthode choisir ?</h2>
 
-		<p>Nous avons vu quatre méthodes d'optimisation au cours de cette partie :</p>
+		<p>
+			Cette partie du cours a présenté quatre méthodes d'optimisation : la descente de gradient
+			classique (Leçon 3), et les trois variantes de cette leçon — SGD, CD, et Newton. Chacune fait
+			un arbitrage différent entre le coût de calcul par itération et le nombre d'itérations
+			nécessaires pour converger, ce qui explique pourquoi aucune ne domine systématiquement les
+			autres :
+		</p>
 
 		<div class="synthesis-table">
 			<table>
@@ -442,32 +687,40 @@
 				</thead>
 				<tbody>
 					<tr>
-						<td><strong>GD</strong></td>
-						<td>O(d × n)</td>
-						<td>Linéaire (si convexe fortement)</td>
-						<td>Fonctions lisses, petit dataset</td>
+						<td data-label="Méthode"><strong>GD</strong></td>
+						<td data-label="Coût/itération">O(d × n)</td>
+						<td data-label="Taux">Linéaire (si fortement convexe)</td>
+						<td data-label="Cas d'usage">Fonctions lisses, petit dataset</td>
 					</tr>
 					<tr>
-						<td><strong>SGD</strong></td>
-						<td>O(d) — mini-batch O(B×d)</td>
-						<td>O(1/√k) en espérance</td>
-						<td>Grand dataset, deep learning</td>
+						<td data-label="Méthode"><strong>SGD</strong></td>
+						<td data-label="Coût/itération">O(d) — mini-batch O(B×d)</td>
+						<td data-label="Taux">O(1/√k) en espérance</td>
+						<td data-label="Cas d'usage">Grand dataset, deep learning</td>
 					</tr>
 					<tr>
-						<td><strong>CD</strong></td>
-						<td>O(d) par coordonnée</td>
-						<td>O(d/k)</td>
-						<td>Lasso, fonctions séparables</td>
+						<td data-label="Méthode"><strong>CD</strong></td>
+						<td data-label="Coût/itération">O(d) par coordonnée</td>
+						<td data-label="Taux">O(d/k)</td>
+						<td data-label="Cas d'usage">Lasso, fonctions séparables</td>
 					</tr>
 					<tr>
-						<td><strong>Newton</strong></td>
-						<td>O(d³)</td>
-						<td>Quadratique local</td>
-						<td>Fonctions C², d modérée</td>
+						<td data-label="Méthode"><strong>Newton</strong></td>
+						<td data-label="Coût/itération">O(d³)</td>
+						<td data-label="Taux">Quadratique (local)</td>
+						<td data-label="Cas d'usage">Fonctions C², d modérée</td>
 					</tr>
 				</tbody>
 			</table>
 		</div>
+
+		<p>
+			La course de convergence ci-dessous permet de comparer directement les quatre méthodes sur la
+			même fonction, en temps réel : observez non seulement <em>quelle</em> méthode atteint le
+			minimum en premier en nombre d'itérations, mais aussi la <em>forme</em> de chaque trajectoire —
+			la ligne lisse et monotone de GD et Newton, contre l'allure en escalier de CD et la trajectoire
+			bruitée de SGD.
+		</p>
 
 		<InteractiveSection tag="Comparer">
 			<ConvergenceRace />
@@ -476,33 +729,42 @@
 		<div class="synthesis-note">
 			<h3>Note sur le compromis coût/précision</h3>
 			<p>
-				Dans la course ci-dessus, Newton atteint l'optimum en quelques itérations. Mais chaque
-				itération coûte O(d³). Pour d = 10⁶ variables, GD ou SGD sont les seuls choix viables, même
-				s'ils nécessitent beaucoup plus d'itérations pour converger.
+				Dans la course ci-dessus, Newton atteint l'optimum en très peu d'itérations — c'est la
+				convergence quadratique du Théorème 4.9 à l'œuvre. Mais chaque itération coûte
+				<KatexInline formula={hessianCostCubic} />. Pour <KatexInline formula="d = 10^6" />
+				variables (un ordre de grandeur courant en deep learning), GD ou SGD sont les seuls choix viables,
+				même s'ils nécessitent objectivement beaucoup plus d'itérations pour converger : le produit (coût
+				par itération) × (nombre d'itérations) reste, dans ce régime, largement en faveur des méthodes
+				de premier ordre.
 			</p>
 		</div>
 
 		<Callout type="summary" title="Retenir de cette leçon">
 			<ul>
 				<li>
-					<strong>SGD</strong> remplace un gradient exact coûteux par une estimation sans biais — idéal
-					pour les grands datasets.
+					<strong>SGD</strong> remplace un gradient exact coûteux par une estimation sans biais (Théorème
+					4.2) — idéal pour les grands datasets, au prix d'une trajectoire bruitée dont l'amplitude doit
+					être contrôlée par le choix du pas (conditions de Robbins-Monro, Théorème 4.4).
 				</li>
 				<li>
-					<strong>Mini-batch SGD</strong> réduit la variance tout en restant O(B×d) par itération. B ∈
-					[8, 256] est le standard.
+					<strong>Mini-batch SGD</strong> réduit la variance du bruit (approximativement en
+					<KatexInline formula="1/B" />) tout en restant <KatexInline formula="O(B \times d)" /> par itération.
+					<KatexInline formula="B \in [8, 256]" /> est le standard en pratique.
 				</li>
 				<li>
-					<strong>Coordinate Descent</strong> optimise une coordonnée à la fois — efficace pour les fonctions
-					séparables et les problèmes L1.
+					<strong>Coordinate Descent</strong> optimise une coordonnée à la fois, exactement — efficace
+					pour les fonctions séparables et les problèmes L1, où chaque mise à jour a souvent une forme
+					explicite (seuillage doux pour le Lasso).
 				</li>
 				<li>
-					<strong>Méthode de Newton</strong> exploite l'Hessienne pour une convergence quadratique locale,
-					mais coûte O(d³) par itération.
+					<strong>Méthode de Newton</strong> exploite l'information de courbure (Hessienne) pour une
+					convergence quadratique locale (Théorème 4.9), mais coûte
+					<KatexInline formula={hessianCostCubic} /> par itération — impraticable en très grande dimension
+					sans approximation (Quasi-Newton, L-BFGS).
 				</li>
 				<li>
 					Aucune méthode ne domine universellement : le choix dépend du coût d'évaluation, de la
-					dimension et de la structure du problème.
+					dimension du problème, et de la structure de la fonction objectif.
 				</li>
 			</ul>
 		</Callout>
