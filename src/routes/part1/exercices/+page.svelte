@@ -37,6 +37,13 @@
 			label: 'Descente de gradient et accélération',
 			description: '20 exercices — GD, Momentum, Nesterov, taux de convergence',
 			color: 'surprise'
+		},
+		{
+			id: 'sgd-cd-newton',
+			label: 'SGD, CD & Newton',
+			description:
+				'20 exercices — descente stochastique, descente coordonnée par coordonnée, méthode de Newton',
+			color: 'agent'
 		}
 	];
 
@@ -153,11 +160,82 @@
 	const f219case1 = '\\lambda_1 = 3,\\ \\lambda_2 = -1';
 	const f219case2 = '\\lambda_1 = \\lambda_2 = 5';
 
-	// Ex 2.20
+	// Ex 1.20
 	const f220 = 'f(x,y) = (x^2 + y^2 - 1)^2';
 	const f220grad = '\\nabla f(x,y) = \\big(4x(x^2+y^2-1),\\ 4y(x^2+y^2-1)\\big)';
 	const f220circle =
 		'x^2 + y^2 = 1 \\ \\Rightarrow\\ \\nabla f(x,y) = (0,0)\\ \\text{et}\\ f(x,y) = 0';
+
+	// ── Section 4 : SGD, CD & Newton ──
+
+	// Ex 4.1
+	const sgd41batch =
+		'w^{(k+1)} = w^{(k)} - \\alpha \\cdot \\frac{1}{n}\\sum_{i=1}^n \\nabla f_i(w^{(k)})';
+	const sgd41stoch = "w^{(k+1)} = w^{(k)} - \\alpha \\',\\nabla f_{i_k}(w^{(k)})";
+
+	// Ex 4.2
+	const batch42cost = '\\mathcal{O}(nd)';
+	const sgd42cost = '\\mathcal{O}(d)';
+
+	// Ex 4.3
+	const unbiasedGrad = '\\mathbb{E}[\\nabla f_{i_k}] = \\frac{1}{n}\\sum_i \\nabla f_i = \\nabla F';
+
+	// Ex 4.4
+	const sgdVariance =
+		'\\mathrm{Var}(g_k) = \\mathbb{E}[\\|\\nabla f_{i_k}\\|^2] - \\|\\nabla F\\|^2';
+
+	// Ex 4.5 — mini-batch of size b
+	const minibatchVariance = '\\mathrm{Var}(g_k^{(b)}) = \\frac{1}{b}\\,\\sigma^2_{\\text{batch}}';
+
+	// Ex 4.6 — separable CD proof
+	const sepFunc = 'f(x_1,x_2) = g(x_1) + h(x_2)';
+	const cdXStep =
+		'\\frac{\\partial f}{\\partial x_1} = 0 \\Rightarrow x_1^* = \\operatorname*{argmin}_{t} g(t)';
+	const cdYStep =
+		'\\frac{\\partial f}{\\partial x_2} = 0 \\Rightarrow x_2^* = \\operatorname*{argmin}_{t} h(t)';
+
+	// Ex 4.7 — CD on coupled function
+	const coupledF = 'f(x,y) = x^2 + xy + y^2';
+	const cdCoupledGradX = '\\frac{\\partial f}{\\partial x} = 2x + y';
+	const cdCoupledGradY = '\\frac{\\partial f}{\\partial y} = x + 2y';
+
+	// Ex 4.8 — Newton single step on quadratic
+	const quadF = 'f(x) = \\tfrac12 (x-x^*)^{\\!\\top} A (x-x^*)';
+
+	// Ex 4.9 — Newton's update formula derivation
+	const taylor2 = 'f(x+d) \\approx f(x) + \\nabla f(x)^\\top d + \\tfrac12 d^{\\!\\top}H_f d';
+	const newtonEq = 'd^* = -[H_f(x)]^{-1}\\,\\nabla f(x)';
+
+	// Ex 4.10 — Newton on non-quadratic
+	const newtonNonQuad = 'f \\neq T_2 \\Rightarrow x_{new} \\neq x^*';
+
+	// Ex 4.11 — Newton on f(x)=x⁴
+
+	// Ex 4.12 — Hessian singularity
+	const hessSing = '\\det(H_f) \\approx 0 \\Rightarrow [H_f]^{-1} \\text{ non défini ou instable}';
+
+	// Ex 4.13 — condition number comparison table
+
+	const condNewton = '\\kappa(H)=1 \\text{(invariant par changement de base)}';
+
+	// Ex 4.14 — trust region concept
+
+	// Ex 4.15 — cost per iteration comparison
+	const costCDiter = '\\mathcal{O}(d)';
+	const costNewtonIter = '\\mathcal{O}(d^3)';
+
+	// Ex 4.16 — convergence rates summary
+
+	// Ex 4.17 — SGD noise near optimum
+
+	// Ex 4.18 — why CD fails on ill-conditioned coupled functions
+
+	// Ex 4.19 — when to use which method summary
+	const sgdUseCase = 'n \\gg d';
+	const cdUseCase = 'd \\text{ petit, faiblement coupl\u00e9e}';
+	const newtonUseCase = 'f \\text{ quadratique ou bien approximable localement}';
+
+	// Ex 4.20 — synthesis: comparing all three on a single landscape
 </script>
 
 <svelte:head>
@@ -2069,6 +2147,625 @@ L_i.
 				Résumez les hyperparamètres requis par chacun des trois algorithmes étudiés (GD classique,
 				Momentum, Nesterov) et expliquez brièvement le rôle du paramètre supplémentaire introduit
 				par les méthodes accélérées.
+			</p>
+		</ExercisePanel>
+
+		<h2 id="sgd-cd-newton">SGD, Descente coordonnée et Newton</h2>
+
+		<p>
+			Cette section propose vingt exercices sur trois familles d'algorithmes qui sortent du cadre de
+			la descente de gradient classique : la descente stochastique (SGD) et ses variantes
+			mini-batch, la descente coordonnée par coordonnée (Coordinate Descent), et la méthode de
+			Newton. Chaque exercice est accompagné d'une solution détaillée.
+		</p>
+
+		<!-- ═══ SGD ═══ -->
+
+		<ExercisePanel number="4.1" title="Différence entre GD batch et SGD">
+			{#snippet solution()}
+				<p>
+					La descente de gradient <strong>batch</strong> utilise le gradient complet à chaque
+					itération :
+					<KatexInline formula={sgd41batch} />. Le <strong>SGD pur</strong> n'utilise qu'un seul
+					échantillon aléatoire <KatexInline formula="i_k" /> par itération :
+					<KatexInline formula={sgd41stoch} />. Le SGD est beaucoup plus bruyant mais bien moins
+					coûteux quand le nombre d'échantillons
+					<KatexInline formula="n" /> est grand. La trajectoire du SGD explore un "voisinage" de la solution,
+					pendant que celle du GD suit une trajectoire déterministe.
+				</p>
+			{/snippet}
+			<p>
+				Écrivez les formules de mise à jour pour la descente de gradient batch et le SGD pur sur un
+				problème d'apprentissage avec <KatexInline formula="n" /> échantillons. Quelle est la différence
+				fondamentale ?
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel number="4.2" title="Coût par itération : GD vs SGD">
+			{#snippet solution()}
+				<p>
+					Pour une matrice de données <KatexInline
+						formula={String.raw`X \in \mathbb{R}^{n \times d}`}
+					/>, une itération GD batch calcule <KatexInline formula="X^\top(Xw - y)" />, ce qui coûte
+					<KatexInline formula={batch42cost} /> opérations. Une itération SGD ne calcule que le gradient
+					sur un seul échantillon : <KatexInline formula={sgd42cost} />. Quand <KatexInline
+						formula="n \gg d"
+					/>
+					(plusieurs milliers de samples), le rapport est colossal : chaque pas SGD coûte environ
+					<KatexInline formula="n" /> fois moins cher.
+				</p>
+			{/snippet}
+			<p>
+				Comparez le coût en opérations d'une itération de GD batch et celle du SGD pour un problème
+				avec une matrice <KatexInline formula={String.raw`X \in \mathbb{R}^{n \times d}`} />.
+				Pourquoi le SGD est-il préféré quand <KatexInline formula="n" /> est très grand ?
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel number="4.3" title="Le gradient stochastique est un estimateur sans biais">
+			{#snippet solution()}
+				<p>
+					On choisit <KatexInline formula="i_k" /> uniformément parmi <KatexInline
+						formula={String.raw`\{1,\ldots,n\}`}
+					/>
+					. L'espérance du gradient stochastique est :
+				</p>
+				<KatexBlock
+					formula={String.raw`
+\mathbb{E}[g_k] = \frac1n\sum_{i=1}^n \nabla f_i(w) = \nabla F(w).`}
+				/>
+				<p>
+					Le SGD n'est donc pas "moins correct" que le GD — il introduit du bruit mais l'espérance
+					reste parfaite. C'est cette propriété de non-biais qui garantit la convergence théorique.
+				</p>
+			{/snippet}
+			<p>
+				Soit <KatexInline formula={String.raw`F(w) = \frac{1}{n}\sum_{(i = 1)}^n f_i(w)`} /> et
+				<KatexInline formula={String.raw`g_k = \nabla f_{i_k}(w^{k})`} /> où <KatexInline
+					formula="i_k"
+				/>
+				est choisi uniformément au hasard. Montrez que <KatexInline formula={unbiasedGrad} />.
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel number="4.4" title="Variance du gradient stochastique">
+			{#snippet solution()}
+				<p>
+					La variance est <KatexInline formula={sgdVariance} />. Quand on s'approche de l'optimum,
+					<KatexInline formula={String.raw`\|\nabla F(w)\| \to 0`} />, donc la variance tend vers
+					<KatexInline formula={String.raw`\mathbb{E}[\|\nabla f_{i_k}\|^2]`} /> — qui n'est généralement
+					pas nulle. C'est pourquoi le SGD ne converge pas exactement vers l'optimum avec un pas constant
+					: il oscille dans une zone de taille proportionnelle à la variance résiduelle autour du minimum.
+				</p>
+			{/snippet}
+			<p>
+				Calculez la variance de l'estimateur <KatexInline
+					formula={String.raw`g_k = \nabla f_{i_k}(w)`}
+				/> en fonction du gradient batch <KatexInline formula={String.raw`\nabla F(w)`} />. Que
+				devient cette variance quand
+				<KatexInline formula="w \to w^*" /> ?
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel number="4.5" title="Mini-batch SGD et réduction de variance">
+			{#snippet solution()}
+				<p>
+					Avec un mini-batch de taille <KatexInline formula="b" />, le gradient estimé est la
+					moyenne d'<KatexInline formula="b" /> gradients individuels indépendants. Par le théorème sur
+					la variance d'une moyenne : <KatexInline formula={minibatchVariance} />. La variance est
+					divisée par <KatexInline formula="b" /> comparé au SGD pur (
+					<KatexInline formula="b=1" />). Un mini-batch de taille 32 réduit donc la variance d'un
+					facteur 32, sans coûter plus cher qu'une seule itération GD batch (<KatexInline
+						formula="b \ll n"
+					/>).
+				</p>
+			{/snippet}
+			<p>
+				Si le SGD pur utilise un seul échantillon par pas, expliquez pourquoi utiliser un mini-batch
+				de taille <KatexInline formula="b" /> réduit la variance de l'estimateur de gradient d'un facteur
+				<KatexInline formula="1/b" />. Quelle est le compromis avec le coût computationnel ?
+			</p>
+		</ExercisePanel>
+
+		<!-- ═══ Coordinate Descent ═══ -->
+
+		<ExercisePanel number="4.6" title="CD sur fonction séparable : convergence en un cycle">
+			{#snippet solution()}
+				<p>
+					La fonction est <KatexInline formula={sepFunc} />. Au premier pas, on optimise selon
+					<KatexInline formula="x_1" /> : <KatexInline formula={cdXStep} />
+					— comme il n'y a aucun couplage entre <KatexInline formula="x_1" /> et
+					<KatexInline formula="x_2" />, ce pas trouve exactement le minimiseur global de <KatexInline
+						formula="g"
+					/>
+					. Au deuxième pas, on optimise selon <KatexInline formula="x_2" /> : <KatexInline
+						formula={cdYStep}
+					/>
+					— de même, le minimiseur global de <KatexInline formula="h" /> est atteint. Après un seul cycle
+					(<KatexInline formula="d=2" /> pas), on a
+					<KatexInline formula={String.raw`x_1 = x_1^*, \; x_2 = x_2^*`} />, donc le minimum global
+					est atteint.
+				</p>
+				<p>
+					<strong>Conclusion :</strong> sur une fonction séparable, chaque coordonnée peut être
+					optimisée indépendamment et CD trouve le minimum global en exactement un cycle d'<KatexInline
+						formula="d"
+					/>
+					pas.
+				</p>
+			{/snippet}
+			<p>
+				Soit <KatexInline formula={sepFunc} /> où <KatexInline formula="g" /> et
+				<KatexInline formula="h" /> sont deux fonctions strictement convexes en une variable. Montrez
+				que la descente coordonnée par coordonnée atteint le minimum global en exactement un cycle de
+				2 pas, quel que soit le point de départ.
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel number="4.7" title="CD sur fonction couplée : zigzag">
+			{#snippet solution()}
+				<p>
+					Les gradients partiels sont <KatexInline formula={cdCoupledGradX} /> et
+					<KatexInline formula={cdCoupledGradY} />. On voit que chaque gradient partiel dépend de
+					<strong>l'autre</strong> variable : optimiser <KatexInline formula="x" /> modifie la pente optimale
+					en <KatexInline formula="y" />, et vice-versa. Le pas selon <KatexInline formula="x" />
+					ne peut donc pas trouver directement le minimiseur global — il trouve un optimum "local" pour
+					cette coordonnée avec la valeur actuelle de <KatexInline formula="y" /> fixe, mais ce choix
+					sera ensuite rendu sous-optimal quand <KatexInline formula="y" /> changera. C'est le mécanisme
+					du zigzag : chaque pas "corrige" le précédent au lieu de progresser directement en avant.
+				</p>
+			{/snippet}
+			<p>
+				Soit <KatexInline formula={coupledF} />. Calculez les gradients partiels et expliquez
+				pourquoi la descente coordonnée ne peut pas converger en un seul cycle sur cette fonction,
+				contrairement au cas séparable.
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel
+			number="4.8"
+			title="Pourquoi Newton converge-t-il en un seul pas sur une quadratique ?"
+		>
+			{#snippet solution()}
+				<p>
+					Soit <KatexInline formula={quadF} /> avec <KatexInline formula="A \succ 0" />
+					. Le gradient et la Hessienne sont :
+				</p>
+				<KatexBlock
+					formula={String.raw`
+\nabla f(x) = A(x-x^*)
+, \qquad
+H_f(x) = A.`}
+				/>
+				<p>
+					Le pas de Newton s'écrit <KatexInline formula={newtonEq} />. En injectant les expressions
+					:
+				</p>
+				<KatexBlock
+					formula={String.raw`
+d^* = -A^{-1}\, A(x-x^*) = -(x-x^*).
+`}
+				/>
+				<p>
+					La mise à jour donne <KatexInline
+						formula={String.raw`x_{new} = x + d^* = x - (x - x^*) = x^*`}
+					/>
+					: on atteint l'optimum global en exactement un pas, quel que soit le point de départ.
+				</p>
+				<p>
+					<strong>Ce résultat fondamental</strong> montre que la méthode de Newton est exacte quand la
+					fonction est quadratique : le modèle quadratique local (développement de Taylor à l'ordre 2)
+					est alors identique à la fonction elle-même.
+				</p>
+			{/snippet}
+			<p>
+				Soit <KatexInline formula={quadF} /> avec <KatexInline formula="A \succ 0" /> (définie positive).
+				Calculez explicitement le pas de Newton à partir d'un point quelconque
+				<KatexInline formula="x" />, et montrez que ce pas atteint exactement
+				<KatexInline formula="x^*" /> en une seule itération.
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel number="4.9" title="Dérivation du pas de Newton par développement de Taylor">
+			{#snippet solution()}
+				<p>
+					On approxime <KatexInline formula="f(x+d)" /> par son développement à l'ordre 2 :
+					<KatexInline formula={taylor2} />
+					. On minimise cette approximation quadratique en annulant sa dérivée par rapport à
+					<KatexInline formula="d" /> :
+				</p>
+				<KatexBlock
+					formula={String.raw`
+\frac{\partial}{\partial d}\big(f(x) + \nabla f(x)^\top d + \tfrac12 d^{\!\top}H_f d\big)
+= \nabla f(x) + H_f d = 0
+\\Rightarrow
+d^* = -[H_f]^{-1}\,\nabla f(x).`}
+				/>
+				<p>
+					Cette direction <KatexInline formula="d^*" /> est exactement celle qui annule le gradient du
+					modèle quadratique local — c'est la raison pour laquelle Newton converge en un pas si ce modèle
+					est parfait (cas quadratique).
+				</p>
+			{/snippet}
+			<p>
+				En approximant <KatexInline formula="f" /> par son développement de Taylor à l'ordre 2 autour
+				du point courant, dérivez la formule classique du pas de Newton :
+				<KatexInline formula={newtonEq} />.
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel
+			number="4.10"
+			title="Newton sur fonction non quadratique : convergence itérative"
+		>
+			{#snippet solution()}
+				<p>
+					Pour une fonction non quadratique, le modèle de Taylor à l'ordre 2 n'est qu'une
+					approximation locale. Chaque pas de Newton résout exactement ce modèle quadratique local
+					mais ne trouve pas le optimum global : <KatexInline formula={newtonNonQuad} />
+					. La méthode itère donc : à chaque étape, elle récalcule un nouveau modèle quadratique centré
+					sur le nouvel itéré.
+				</p>
+				<p>
+					Quand on se rapproche de l'optimum, le développement de Taylor est de plus en plus fidèle
+					(le terme d'<KatexInline formula="o(\|d\|^2)" /> diminue). C'est ce qui explique la convergence
+					<strong>quadratique</strong> locale : l'erreur est carrée à chaque itération, ce qui signifie
+					que le nombre de chiffres corrects double à chaque pas.
+				</p>
+			{/snippet}
+			<p>
+				Pourquoi la méthode de Newton nécessite-t-elle plusieurs itérations sur une fonction non
+				quadratique, alors qu'elle converge en un seul pas sur une quadratique ? Qu'est-ce qui
+				garantit malgré tout sa convergence rapide ?
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel number="4.11" title="Newton sur f(x) = x⁴ en 1D">
+			{#snippet solution()}
+				<p>
+					La dérivée est <KatexInline formula={String.raw`f'(x)=4x^3`} /> et la dérivée seconde
+					<KatexInline formula={String.raw`f''(x)=12x^2`} />. Le pas de Newton :
+				</p>
+				<KatexBlock
+					formula={String.raw`d^{(k)} = -\frac{4(x^{(k)})^3}{12(x^{(k)})^2} = -\tfrac13 x^{(k)}`}
+				/>
+				<p>
+					La suite d'itérés est <KatexInline formula={String.raw`x^{(k+1)} = \tfrac23 x^{(k)}`} />
+					, qui converge géométriquement vers 0 avec un facteur de contraction constant <KatexInline
+						formula="2/3"
+					/>.
+				</p>
+				<p>
+					Attention : en <KatexInline formula="x=0" />, la dérivée seconde s'annule (
+					<KatexInline formula={String.raw`f''(0)=0`} />) — le Hessien est singulier et le pas de
+					Newton n'est plus défini. C'est pourquoi Newton fonctionne bien près de l'optimum pour des
+					fonctions strictement convexes (Hessien défini positif) mais peut échouer si la courbure
+					s'annule.
+				</p>
+			{/snippet}
+			<p>
+				Appliquez la méthode de Newton à <KatexInline formula={String.raw`f(x)=x^4`} /> en 1D. Déterminez
+				la relation de récurrence et montrez que l'itération converge géométriquement vers le minimum.
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel number="4.12" title="Singularité du Hessien et problèmes numériques">
+			{#snippet solution()}
+				<p>
+					Si <KatexInline formula={hessSing} />, l'inverse n'existe pas (Hessien singulier) ou est
+					mal conditionné. Trois conséquences pratiques :
+				</p>
+				<ol>
+					<li>
+						Le pas de Newton peut être infiniment grand si le Hessien est exactement singulier.
+					</li>
+					<li>
+						Un petit bruit numérique dans le gradient se voit amplifié par un facteur égal à
+						<KatexInline formula="\kappa(H)" /> (conditionnement du Hessien).
+					</li>
+					<li>
+						Dans la pratique, on ajoute une régularisation <KatexInline
+							formula={String.raw`H + \lambda I`}
+						/> (méthode de Levenberg-Marquardt) ou on utilise des trust-regions pour éviter l'inversion.
+					</li>
+				</ol>
+			{/snippet}
+			<p>
+				Que se passe-t-il si le Hessien <KatexInline formula="H_f(x)" /> est singulier en un point ? Comment
+				contourne-t-on ce problème dans les implémentations pratiques de Newton ?
+			</p>
+		</ExercisePanel>
+
+		<!-- ═══ Comparaisons et synthèse ═══ -->
+
+		<ExercisePanel number="4.13" title="Conditionnement : impact relatif sur GD, CD et Newton">
+			{#snippet solution()}
+				<p>
+					Le nombre de conditionnement <KatexInline formula={String.raw`\kappa = L/\mu`} /> affecte les
+					trois méthodes différemment :
+				</p>
+				<ul>
+					<li>
+						<strong>GD :</strong> le taux de contraction est <KatexInline
+							formula={String.raw`1 - \mu/L = 1 - 1/\kappa`}
+						/>. Pour un grand conditionnement, la convergence devient très lente.
+					</li>
+					<li>
+						<strong>CD :</strong> le zigzag est aggravé quand les coordonnées sont fortement
+						couplées, situation typique des fonctions mal conditionnées. Le nombre de cycles
+						nécessaires croît avec
+						<KatexInline formula="\kappa" />.
+					</li>
+					<li>
+						<strong>Newton :</strong> le pas est <KatexInline formula={condNewton} />
+						. En inversant le Hessien, Newton « déconditionne » automatiquement la fonction : sur une
+						quadratique, il converge en un seul pas quel que soit le conditionnement.
+					</li>
+				</ul>
+			{/snippet}
+			<p>
+				Expliquez qualitativement comment le nombre de conditionnement <KatexInline
+					formula={String.raw`\kappa = L/\mu`}
+				/> affecte différemment les vitesses de convergence du GD, de la descente coordonnée et de Newton.
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel number="4.14" title="Trust-region : contrôler le pas de Newton">
+			{#snippet solution()}
+				<p>
+					L'idée est de n'accepter le modèle quadratique que dans un rayon <KatexInline
+						formula="\Delta_k"
+					/>
+					environ du point courant :
+				</p>
+				<KatexBlock
+					formula={String.raw`
+\min_d \; f(x) + \nabla f(x)^\top d + \tfrac12 d^{\!\top}H_f d
+\\quad \text{s.c.}\ \|d\| \leq \Delta_k.`}
+				/>
+				<p>
+					Si le pas de Newton non contraint satisfait la contrainte, on l'utilise tel quel
+					(comportement classique). Sinon, le pas est tronqué — on se déplace moins que ce que
+					préconiserait Newton pur, s'assurant ainsi une descente contrôlée. Après chaque itération, <KatexInline
+						formula="\Delta_k"
+					/>
+					est ajusté : agrandi si le modèle était fidèle, réduit sinon.
+				</p>
+			{/snippet}
+			<p>
+				Pourquoi introduire une contrainte <KatexInline formula="\|d\| \leq \Delta_k" /> sur la direction
+				de Newton ? En quoi cette approche (trust-region) est-elle plus robuste que le pas de Newton classique,
+				surtout loin du minimum ?
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel number="4.15" title="Coût par itération : comparaison des trois méthodes">
+			{#snippet solution()}
+				<p>
+					Pour <KatexInline formula="d" /> variables et <KatexInline formula="n" /> échantillons :
+				</p>
+				<table>
+					<thead>
+						<tr>
+							<th>Méthode</th>
+							<th>Coût / itération</th>
+							<th>Dépend en n ?</th>
+						</tr>
+					</thead>
+					<tbody>
+						<tr>
+							<td>GD batch</td>
+							<td><KatexInline formula={batch42cost} /></td>
+							<td>Oui</td>
+						</tr>
+						<tr>
+							<td>SGD (mini-batch b)</td>
+							<td><KatexInline formula={String.raw`\mathcal{O}(bd)`} /></td>
+							<td>Oui, mais faiblement</td>
+						</tr>
+						<tr>
+							<td>CD (un pas)</td>
+							<td><KatexInline formula={costCDiter} /></td>
+							<td>Non</td>
+						</tr>
+						<tr>
+							<td>Newton (complet)</td>
+							<td><KatexInline formula={costNewtonIter} /></td>
+							<td>Non</td>
+						</tr>
+					</tbody>
+				</table>
+				<p>
+					Le coût cubique de Newton vient du calcul et de l'inversion de la Hessienne (<KatexInline
+						formula="d \times d"
+					/>
+					). Pour <KatexInline formula="d > 1000" />, cette approche devient rapidement impossible.
+				</p>
+			{/snippet}
+			<p>
+				Comparez le coût computationnel par itération du GD batch, du SGD mini-batch, de la descente
+				coordonnée et de Newton en fonction du nombre de variables <KatexInline formula="d" /> et du nombre
+				d'échantillons <KatexInline formula="n" />.
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel number="4.16" title="Taux de convergence : tableau comparatif">
+			{#snippet solution()}
+				<p>Pour une fonction convexe avec gradient <KatexInline formula="L" />-Lipschitz :</p>
+				<table>
+					<thead>
+						<tr>
+							<th>Méthode</th>
+							<th>Taux de convergence (erreur)</th>
+							<th>Itérations pour précision <KatexInline formula={String.raw`\epsilon`} /></th>
+						</tr>
+					</thead>
+					<tbody>
+						<tr>
+							<td>GD batch (convexe)</td>
+							<td><KatexInline formula={String.raw`\mathcal{O}(1/k)`} /></td>
+							<td><KatexInline formula={String.raw`\mathcal{O}(1/\epsilon)`} /></td>
+						</tr>
+						<tr>
+							<td>SGD (convexe)</td>
+							<td><KatexInline formula={String.raw`\mathcal{O}(1/\sqrt{k})`} /></td>
+							<td><KatexInline formula={String.raw`\mathcal{O}(1/\epsilon^2)`} /></td>
+						</tr>
+						<tr>
+							<td>GD (fortement convexe)</td>
+							<td><KatexInline formula={String.raw`\mathcal{O}(e^{-k \mu/L})`} /></td>
+							<td><KatexInline formula={String.raw`\mathcal{O}(\log(1/\epsilon))`} /></td>
+						</tr>
+						<tr>
+							<td>Newton (quadratique)</td>
+							<td><KatexInline formula="1 itération" /></td>
+							<td>1</td>
+						</tr>
+						<tr>
+							<td>Newton (non quadratique, près de <KatexInline formula="x^*" />)</td>
+							<td><KatexInline formula={String.raw`\|e^{(k+1)}\| \leq C\|e^{(k)}\|^2`} /></td>
+							<td><KatexInline formula={String.raw`\mathcal{O}(\log \log (1/\epsilon))`} /></td>
+						</tr>
+					</tbody>
+				</table>
+				<p>
+					Newton domine théoriquement par sa convergence quadratique locale, mais son coût par
+					itération est prohibitif en grande dimension. Le SGD est lent par itération mais chaque
+					pas est extrêmement pas cher.
+				</p>
+			{/snippet}
+			<p>
+				Rédigez un tableau comparatif des taux de convergence du GD, du SGD, et de Newton dans
+				différents contextes (convexe, fortement convexe, quadratique). Commentez les résultats.
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel number="4.17" title="Bruit stochastique près du minimum">
+			{#snippet solution()}
+				<p>
+					Même à l'optimum <KatexInline formula={String.raw`w^*`} />, on a généralement
+					<KatexInline formula={String.raw`\nabla f_i(w^*) \neq 0`} /> pour certains échantillons — seule
+					la moyenne est nulle. Avec un pas constant <KatexInline formula="\alpha" />, le SGD ne
+					converge donc pas exactement vers <KatexInline formula={String.raw`w^*`} /> mais oscille dans
+					une boule de rayon proportionnel à <KatexInline
+						formula={String.raw`\sqrt{\alpha \cdot \sigma^2}`}
+					/>
+					où <KatexInline formula="\sigma^2" /> est la variance du gradient.
+				</p>
+				<p>
+					C'est pourquoi on utilise un schéma de pas décroissant (
+					<KatexInline formula={String.raw`\alpha_k \to 0`} />) pour la convergence exacte : le
+					bruit est progressivement amorti. En pratique, en Deep Learning, ce comportement
+					d'exploration autour du minimum est souvent bénéfique — il permet d'éviter les minima trop
+					« pointus » et favorise une meilleure généralisation.
+				</p>
+			{/snippet}
+			<p>
+				Expliquez pourquoi le SGD avec pas constant n'atteint jamais exactement l'optimum, mais
+				oscille autour. Comment un schéma de pas décroissant résout-il ce problème ?
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel number="4.18" title="Pourquoi CD est lent sur les fonctions couplées">
+			{#snippet solution()}
+				<p>
+					Lorsque les coordonnées sont fortement couplées (terme croisé élevé dans le Hessien),
+					chaque pas en optimisant une coordonnée « dérange » l'optimalité de la précédente. Par
+					exemple, si on a
+					<KatexInline formula={String.raw`f(x,y) = x^2 + 10xy + y^2`} />, le terme <KatexInline
+						formula="10xy"
+					/> crée un couplage fort.
+				</p>
+				<p>
+					Le pas selon <KatexInline formula="x" /> minimise partiellement mais laisse une pente forte
+					en
+					<KatexInline formula="y" />, et vice-versa. La trajectoire forme un zigzag qui converge
+					très lentement quand le conditionnement est mauvais. C'est pourquoi CD excelle sur les
+					fonctions séparables ou faiblement couplées (comme certaines régularisations L1
+					décomposables) mais échoue sur des paysages denses.
+				</p>
+			{/snippet}
+			<p>
+				En prenant l'exemple d'une fonction fortement couplée, expliquez pourquoi la descente
+				coordonnée forme un zigzag qui converge lentement. En quoi cette situation est-elle liée au
+				conditionnement de la fonction ?
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel number="4.19" title="Quand utiliser quelle méthode ?">
+			{#snippet solution()}
+				<table>
+					<thead>
+						<tr>
+							<th>Méthode</th>
+							<th>Idéal pour...</th>
+							<th>Éviter quand...</th>
+						</tr>
+					</thead>
+					<tbody>
+						<tr>
+							<td><strong>SGD</strong></td>
+							<td><KatexInline formula={sgdUseCase} /></td>
+							<td>Faible tolérance au bruit, besoin de convergence exacte rapide</td>
+						</tr>
+						<tr>
+							<td><strong>CD</strong></td>
+							<td><KatexInline formula={cdUseCase} /></td>
+							<td>Fort couplage entre variables, grande dimension <KatexInline formula="d" /></td>
+						</tr>
+						<tr>
+							<td><strong>Newton</strong></td>
+							<td><KatexInline formula={newtonUseCase} /></td>
+							<td>Grande dimension (<KatexInline formula="d > 10^3" />), Hessien singulier</td>
+						</tr>
+					</tbody>
+				</table>
+				<p>
+					En pratique, les méthodes quasi-Newton (BFGS, L-BFGS) offrent un compromis : elles
+					approchent l'information Hessienne sans la calculer explicitement, ce qui rend Newton
+					viable jusqu'à des milliers de dimensions.
+				</p>
+			{/snippet}
+			<p>
+				Pour chacun des trois algorithmes (SGD, CD, Newton), donnez un cas d'utilisation typique où
+				il est le choix naturel et une situation où on devrait l'éviter.
+			</p>
+		</ExercisePanel>
+
+		<ExercisePanel number="4.20" title="Bilan comparatif : paysage, méthodes, résultats">
+			{#snippet solution()}
+				<p>
+					Imaginons un paysage quadratique fortement couplé et mal conditionné en 2D (ellipse très
+					allongée) :
+				</p>
+				<ul>
+					<li>
+						<strong>GD :</strong> trajectoire en zigzag régulier, convergence lente car le pas doit
+						être adapté a la pente la plus raide. Le nombre d'itérations est proportionnel à <KatexInline
+							formula="\kappa"
+						/>
+						.
+					</li>
+					<li>
+						<strong>CD :</strong> zigzag encore plus prononcé car chaque pas ne corrige qu'une coordonnée,
+						puis l'autre doit compenser. La trajectoire est orthogonale (pas horizontaux puis verticaux)
+						mais très inefficace sur les directions obliques de la vallée.
+					</li>
+					<li>
+						<strong>Newton :</strong> convergence en un seul pas. Le Hessien contient l'information complète
+						sur le couplage et le conditionnement, ce qui permet à Newton de « sauter » directement sur
+						le minimum.
+					</li>
+				</ul>
+				<p>
+					C'est cette capacité d'anticiper la courbure (via le Hessien) qui donne à Newton son
+					avantage décisif — mais au prix d'un coût computationnel bien plus élevé par itération.
+				</p>
+			{/snippet}
+			<p>
+				Décrivez qualitativement la trajectoire de convergence du GD, de CD et de Newton sur un
+				paysage quadratique fortement couplé. Pourquoi Newton est-il si nettement plus rapide ? Quel
+				est le prix à payer pour cette efficacité ?
 			</p>
 		</ExercisePanel>
 	</TheorySection>

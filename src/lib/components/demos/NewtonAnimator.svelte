@@ -13,9 +13,69 @@
 	let playing = $state(false);
 	let animTimer: ReturnType<typeof setInterval> | null = null;
 
+	const skewedQuadratic = {
+		f: (x: number, y: number) => 2 * x * x + 1.8 * x * y + 2 * y * y,
+		grad: (x: number, y: number): [number, number] => [4 * x + 1.8 * y, 1.8 * x + 4 * y],
+		hess(): [[number, number], [number, number]] {
+			return [
+				[4, 1.8],
+				[1.8, 4]
+			];
+		},
+		domain: [
+			[-3, 3],
+			[-3, 3]
+		] as [[number, number], [number, number]]
+	};
+	const rosenbrockQuadratic = {
+		f: (x: number, y: number) => (1 - x) ** 2 + 100 * (y - x * x) ** 2,
+		grad: (x: number, y: number): [number, number] => [
+			-2 * (1 - x) - 400 * x * (y - x * x),
+			200 * (y - x * x)
+		],
+		hess: (x: number, y: number): [[number, number], [number, number]] => {
+			const hxx = 2 - 400 * y + 1200 * x * x;
+			const hxy = -400 * x;
+			return [
+				[hxx, hxy],
+				[hxy, 200]
+			];
+		},
+		domain: [
+			[-2, 2],
+			[-1, 3]
+		] as [[number, number], [number, number]]
+	};
+
 	const funcOptions = [
-		{ key: 'paraboloid', label: 'Paraboloïde (x² + 4y²)', func: paraboloid, color: '#f59e0b' },
-		{ key: 'ellipse', label: 'Ellipse (x²/4 + y²)', func: ellipse, color: '#f59e0b' }
+		{
+			key: 'paraboloid',
+			label: 'Paraboloïde (x² + 4y²)',
+			func: paraboloid,
+			color: '#f59e0b',
+			start: [-2.5, 2.0] as [number, number]
+		},
+		{
+			key: 'ellipse',
+			label: 'Ellipse (x²/4 + y²)',
+			func: ellipse,
+			color: '#f59e0b',
+			start: [-2.5, 2.0] as [number, number]
+		},
+		{
+			key: 'skewed',
+			label: 'Quadratique inclinée (2x² + 1.8xy + 2y²)',
+			func: skewedQuadratic,
+			color: '#f59e0b',
+			start: [-2.5, -1.5] as [number, number] // off-axis start highlights the direction mismatch
+		},
+		{
+			key: 'rosenbrock',
+			label: 'Rosenbrock (non quadratique)',
+			func: rosenbrockQuadratic,
+			color: '#f59e0b',
+			start: [-1.5, 2.0] as [number, number]
+		}
 	];
 
 	const opt = $derived(funcOptions.find((o) => o.key === selectedFunc)!);
@@ -70,8 +130,7 @@
 
 	function computeTrajectory(): NewtonPoint[] {
 		const traj: NewtonPoint[] = [];
-		let x = -2.5,
-			y = 2.0;
+		let [x, y] = opt.start;
 
 		for (let k = 0; k < 15; k++) {
 			const fVal = func.f(x, y);
@@ -335,6 +394,21 @@
 		<p>
 			Sur les fonctions quadratiques, elle converge en un seul pas. La convergence quadratique
 			signifie que le nombre de chiffres significatifs double à chaque itération.
+		</p>
+		<p>
+			Sur la <strong>quadratique inclinée</strong>, remarquez à quel point la flèche rouge
+			(gradient) et la flèche orange (Newton) pointent dans des directions différentes : le couplage
+			entre x et y (terme croisé <KatexInline formula="1.8\,xy" /> dans <KatexInline formula="f" />)
+			fait que suivre le gradient seul emprunte un chemin bien moins direct que Newton, qui corrige
+			cette direction grâce à la courbure complète (Hessien non diagonal).
+		</p>
+		<p>
+			Sur <strong>Rosenbrock</strong>, la fonction n'est plus quadratique : Newton a besoin de
+			plusieurs pas, mais leur nombre de chiffres corrects double à peu près à chaque itération une
+			fois proche du minimum — c'est la vraie signature de la convergence quadratique. Notez aussi
+			que loin du minimum, le Hessien n'est pas toujours défini positif : Newton peut alors
+			converger moins directement, car il ne fait aucune distinction entre un minimum, un maximum ou
+			un point-selle.
 		</p>
 	</div>
 </div>

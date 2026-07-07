@@ -7,14 +7,48 @@
 	import ContourPlot from '$lib/components/charts/ContourPlot.svelte';
 	import { paraboloid, ellipse } from '$lib/math/test-functions.js';
 
+	const skewedQuadratic = {
+		f: (x: number, y: number) => 2 * x * x + 1.8 * x * y + 2 * y * y,
+		grad: (x: number, y: number): [number, number] => [4 * x + 1.8 * y, 1.8 * x + 4 * y],
+		hess(): [[number, number], [number, number]] {
+			return [
+				[4, 1.8],
+				[1.8, 4]
+			];
+		},
+		domain: [
+			[-3, 3],
+			[-3, 3]
+		] as [[number, number], [number, number]]
+	};
+
 	let containerWidth = $state(420);
 	let selectedFunc = $state('paraboloid');
 	let playing = $state(false);
 	let animTimer: ReturnType<typeof setInterval> | null = null;
 
 	const funcOptions = [
-		{ key: 'paraboloid', label: 'Paraboloïde (x² + 4y²)', func: paraboloid, color: '#8b5cf6' },
-		{ key: 'ellipse', label: 'Ellipse (x²/4 + y²)', func: ellipse, color: '#06b6d4' }
+		{
+			key: 'paraboloid',
+			label: 'Paraboloïde (x² + 4y²)',
+			func: paraboloid,
+			color: '#8b5cf6',
+			start: [-2.5, 2.0] as [number, number]
+		},
+		{
+			key: 'ellipse',
+			label: 'Ellipse (x²/4 + y²)',
+			func: ellipse,
+			color: '#06b6d4',
+			start: [-2.5, 2.0] as [number, number]
+		},
+		{
+			key: 'skewed',
+			label: 'Quadratique inclinée (2x² + 1.8xy + 2y²)',
+			func: skewedQuadratic,
+			color: '#f59e0b',
+			start: [-2.5, -1.5] as [number, number]
+		}
 	];
 
 	const opt = $derived(funcOptions.find((o) => o.key === selectedFunc)!);
@@ -107,10 +141,7 @@
 
 	function computeFullTrajectory(): TrajPoint[] {
 		const traj: TrajPoint[] = [];
-		const startX = -2.5,
-			startY = 2.0;
-		let x = startX,
-			y = startY;
+		let [x, y] = opt.start;
 		traj.push({ x, y, fVal: func.f(x, y), coord: -1 });
 
 		for (let k = 0; k < 30; k++) {
