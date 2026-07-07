@@ -8,6 +8,7 @@
 	import Callout from '$lib/components/narrative/Callout.svelte';
 	import ExpertPanel from '$lib/components/narrative/ExpertPanel.svelte';
 	import DefinitionBlock from '$lib/components/narrative/DefinitionBlock.svelte';
+	import TableOfContents from '$lib/components/narrative/TableOfContents.svelte';
 	import Bibliography from '$lib/components/narrative/bib/Bibliography.svelte';
 	import BibElement from '$lib/components/narrative/bib/BibElement.svelte';
 	import KatexInline from '$lib/components/narrative/KatexInline.svelte';
@@ -29,6 +30,47 @@
 
 	const prevMeta = $derived(getPrevPage(meta?.index ?? 0));
 	const nextMeta = $derived(getNextPage(meta?.index ?? 0));
+
+	// ── Table of Contents ──
+	interface TocEntry {
+		id: string;
+		label: string;
+		description?: string;
+		color: 'epistemic' | 'positive' | 'neutral' | 'belief' | 'surprise' | 'agent';
+	}
+
+	const tocEntries: TocEntry[] = [
+		{
+			id: 'introduction',
+			label: 'Introduction',
+			description: 'Structure en somme des fonctions objectif en ML',
+			color: 'epistemic'
+		},
+		{
+			id: 'proprietes-conservation-somme',
+			label: 'Propriétés de conservation par somme',
+			description: 'Convexité, différentiabilité, coercivité, composition affine',
+			color: 'belief'
+		},
+		{
+			id: 'exemples-ml',
+			label: 'Exemples en Machine Learning',
+			description: 'Moindres carrés, Ridge, Lasso, logistique',
+			color: 'positive'
+		},
+		{
+			id: 'non-convexite-deep-learning',
+			label: 'Non-convexité en Deep Learning',
+			description: 'Pourquoi les réseaux de neurones cassent la convexité',
+			color: 'surprise'
+		},
+		{
+			id: 'synthese-proprietes',
+			label: 'Synthèse des propriétés conservées',
+			description: 'Forte convexité, Lipschitz-continuité du gradient',
+			color: 'neutral'
+		}
+	];
 
 	// ── Symboles atomiques réutilisés dans le texte ──
 	const fSym = 'f';
@@ -143,7 +185,9 @@
 >
 	<!-- ================= INTRO ================= -->
 	<TheorySection>
-		<h2>Introduction</h2>
+		<TableOfContents entries={tocEntries} />
+
+		<h2 id="introduction">Introduction</h2>
 
 		<p>
 			En apprentissage automatique, les fonctions objectifs à minimiser possèdent une structure
@@ -189,7 +233,7 @@
 
 	<!-- ================= CONVEXITY ================= -->
 	<TheorySection>
-		<h2>Propriétés de conservation par somme</h2>
+		<h2 id="proprietes-conservation-somme">Propriétés de conservation par somme</h2>
 
 		<p>
 			L'une des forces de la structure en somme est que de nombreuses propriétés mathématiques se
@@ -394,7 +438,7 @@
 
 	<!-- ================= ML EXAMPLES ================= -->
 	<TheorySection>
-		<h2>Exemples en Machine Learning</h2>
+		<h2 id="exemples-ml">Exemples en Machine Learning</h2>
 
 		<p>
 			Voyons maintenant comment ces principes abstraits se concrétisent dans les algorithmes
@@ -671,7 +715,7 @@ w_j^*(\lambda)
 
 	<!-- ================= DEEP LEARNING NON-CONVEXITY ================= -->
 	<TheorySection>
-		<h2>Non-convexité en Deep Learning</h2>
+		<h2 id="non-convexite-deep-learning">Non-convexité en Deep Learning</h2>
 
 		<p>
 			Les réseaux de neurones profonds cassent la structure convexe étudiée jusqu'ici. Même si la
@@ -729,7 +773,7 @@ w_j^*(\lambda)
 
 	<!-- ================= SYNTHESIS TABLE ================= -->
 	<TheorySection>
-		<h2>Synthèse des propriétés conservées</h2>
+		<h2 id="synthese-proprietes">Synthèse des propriétés conservées</h2>
 
 		<p>
 			Deux propriétés supplémentaires, très utilisées en analyse de convergence, se conservent

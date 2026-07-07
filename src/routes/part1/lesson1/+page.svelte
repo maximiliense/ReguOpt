@@ -1,6 +1,7 @@
 <script lang="ts">
 	import PageTemplate from '$lib/components/layout/PageTemplate.svelte';
 	import TheorySection from '$lib/components/narrative/TheorySection.svelte';
+	import TableOfContents from '$lib/components/narrative/TableOfContents.svelte';
 	import Callout from '$lib/components/narrative/Callout.svelte';
 	import DefinitionBlock from '$lib/components/narrative/DefinitionBlock.svelte';
 	import TheoremBlock from '$lib/components/narrative/TheoremBlock.svelte';
@@ -19,6 +20,64 @@
 	const meta = getPageByPath('/part1/lesson1');
 	const prevMeta = $derived(getPrevPage(meta?.index ?? 0));
 	const nextMeta = $derived(getNextPage(meta?.index ?? 0));
+
+	interface TocEntry {
+		id: string;
+		label: string;
+		description?: string;
+		color: 'epistemic' | 'positive' | 'neutral' | 'belief' | 'surprise' | 'agent';
+	}
+
+	const tocEntries: TocEntry[] = [
+		{
+			id: 'introduction',
+			label: 'Introduction',
+			description: "Le problème fondamental de l'optimisation en ML",
+			color: 'epistemic'
+		},
+		{
+			id: 'definitions-preliminaires',
+			label: 'Définitions préliminaires',
+			description: 'Minima locaux, globaux, stricts',
+			color: 'neutral'
+		},
+		{
+			id: 'conditions-necessaires',
+			label: "Conditions nécessaires d'optimalité",
+			description: 'CNO du 1er et 2ème ordre (∇f=0, H⪰0)',
+			color: 'belief'
+		},
+		{
+			id: 'conditions-suffisantes',
+			label: "Conditions suffisantes d'optimalité",
+			description: 'CSSO — Hessien défini positif implique minimum strict',
+			color: 'positive'
+		},
+		{
+			id: 'convexite-minimum-global',
+			label: 'Convexité et minimum global',
+			description: 'Convexité garantit que local ⇒ global',
+			color: 'surprise'
+		},
+		{
+			id: 'contres-exemples',
+			label: 'Contre-exemples et cas limites',
+			description: 'Quand les conditions échouent ou sont inconclusives',
+			color: 'agent'
+		},
+		{
+			id: 'coercivite-existence',
+			label: "Coercivité et existence d'un minimum global",
+			description: 'Théorème de Weierstrass, compacité des ensembles de niveau',
+			color: 'epistemic'
+		},
+		{
+			id: 'synthese-hierarchie',
+			label: 'Synthèse — Hiérarchie des conditions',
+			description: 'Récapitulatif visuel des implications',
+			color: 'neutral'
+		}
+	];
 
 	// ── Formula variables (stored in script so Svelte never parses backslashes) ──
 
@@ -130,7 +189,9 @@
 	next={nextMeta}
 >
 	<TheorySection>
-		<h2>Introduction</h2>
+		<TableOfContents entries={tocEntries} />
+
+		<h2 id="introduction">Introduction</h2>
 
 		<p>
 			Presque tous les algorithmes d'apprentissage automatique se ramènent, au fond, à un seul
@@ -179,7 +240,7 @@
 			pourrait chercher indéfiniment un minimum qui n'existe pas.
 		</Callout>
 
-		<h2>Définitions préliminaires</h2>
+		<h2 id="definitions-preliminaires">Définitions préliminaires</h2>
 
 		<p>
 			Soit <KatexInline formula={fOmegaR} /> une fonction définie sur un ensemble <KatexInline
@@ -233,7 +294,7 @@
 			<ContourLandscape />
 		</InteractiveSection>
 
-		<h2>Conditions nécessaires d'optimalité</h2>
+		<h2 id="conditions-necessaires">Conditions nécessaires d'optimalité</h2>
 
 		<p>
 			Première question : si l'on trouve un point candidat au minimum, quelles propriétés doit-il
@@ -327,7 +388,7 @@
 			<GradientField />
 		</InteractiveSection>
 
-		<h2>Conditions suffisantes d'optimalité</h2>
+		<h2 id="conditions-suffisantes">Conditions suffisantes d'optimalité</h2>
 
 		<p>
 			L'inverse est-il vrai ? Si le Hessien est bien défini positif en un point critique, peut-on
@@ -396,7 +457,7 @@
 			<HessianExplorer />
 		</InteractiveSection>
 
-		<h2>Convexité et minimum global</h2>
+		<h2 id="convexite-minimum-global">Convexité et minimum global</h2>
 
 		<p>
 			Les conditions précédentes ne parlent que de minima <strong>locaux</strong>. La convexité est
@@ -496,7 +557,7 @@
 			</p>
 		</ExampleBlock>
 
-		<h2>Contre-exemples et cas limites</h2>
+		<h2 id="contres-exemples">Contre-exemples et cas limites</h2>
 
 		<p>
 			Chaque théorème énoncé ci-dessus repose sur des hypothèses précises — différentiabilité,
@@ -636,7 +697,7 @@
 			</p>
 		</ExercisePanel>
 
-		<h2>Coercivité et existence d'un minimum global</h2>
+		<h2 id="coercivite-existence">Coercivité et existence d'un minimum global</h2>
 
 		<p>
 			La question ultime, celle que l'on aurait dû poser avant même de chercher à caractériser un
@@ -741,7 +802,7 @@
 			conditions travaillent ensemble.
 		</Callout>
 
-		<h2>Synthèse — Hiérarchie des conditions</h2>
+		<h2 id="synthese-hierarchie">Synthèse — Hiérarchie des conditions</h2>
 
 		<p>
 			Le tableau suivant récapitule les résultats vus dans cette leçon, du plus faible (simple

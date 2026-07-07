@@ -14,6 +14,7 @@
 	import BibElement from '$lib/components/narrative/bib/BibElement.svelte';
 	import KatexBlock from '$lib/components/narrative/KatexBlock.svelte';
 	import KatexInline from '$lib/components/narrative/KatexInline.svelte';
+	import TableOfContents from '$lib/components/narrative/TableOfContents.svelte';
 
 	// ── Demos ──
 	import SGDvsGDComparison from '$lib/components/demos/SGDvsGDComparison.svelte';
@@ -28,6 +29,41 @@
 	const meta = getPageByPath('/part1/lesson4');
 	const prevMeta = $derived(getPrevPage(meta?.index ?? 0));
 	const nextMeta = $derived(getNextPage(meta?.index ?? 0));
+
+	// ── TOC entries ──
+	interface TocEntry {
+		id: string;
+		label: string;
+		description?: string;
+		color: 'epistemic' | 'positive' | 'neutral' | 'belief' | 'surprise' | 'agent';
+	}
+
+	const tocEntries: TocEntry[] = [
+		{
+			id: 'sgd',
+			label: 'Descente de gradient stochastique (SGD)',
+			description: 'Estimateur sans biais, mini-batch, convergence',
+			color: 'epistemic'
+		},
+		{
+			id: 'coordinate-descent',
+			label: 'Coordinate Descent',
+			description: 'Optimisation coordonn\u00e9e par coordonn\u00e9e, Lasso',
+			color: 'positive'
+		},
+		{
+			id: 'newton-raphson',
+			label: 'M\u00e9thode de Newton-Raphson',
+			description: 'Hessienne, convergence quadratique locale',
+			color: 'surprise'
+		},
+		{
+			id: 'synthese-methodes',
+			label: 'Synth\u00e8se : quelle m\u00e9thode choisir ?',
+			description: 'Comparaison co\u00fbt/pr\u00e9cision des 4 m\u00e9thodes',
+			color: 'neutral'
+		}
+	];
 
 	// ── Formules ──
 	const sgdUpdate = `x^{(k+1)} = x^{(k)} - \\alpha_k \\nabla f_{i_k}(x^{(k)})`;
@@ -58,6 +94,8 @@
 	<!-- ═══════════════════════════════════════ -->
 
 	<TheorySection>
+		<TableOfContents entries={tocEntries} />
+
 		<p>
 			Les trois leçons précédentes ont établi les fondements de l'optimisation sans contrainte :
 			conditions d'optimalité, propriétés des fonctions convexes, et la descente de gradient
@@ -91,7 +129,7 @@
 	<!-- ═══════════════════════════════════════ -->
 
 	<TheorySection>
-		<h2>1. Descente de gradient stochastique (SGD)</h2>
+		<h2 id="sgd">1. Descente de gradient stochastique (SGD)</h2>
 
 		<p>Supposons que la fonction objectif s'écrive comme une moyenne empirique :</p>
 
@@ -237,7 +275,7 @@
 	<!-- ═══════════════════════════════════════ -->
 
 	<TheorySection>
-		<h2>2. Coordinate Descent (Descente coordonnée)</h2>
+		<h2 id="coordinate-descent">2. Coordinate Descent (Descente coordonnée)</h2>
 
 		<p>
 			La descente coordonnée est une stratégie itérative qui, à chaque pas, ne modifie qu'une seule
@@ -294,7 +332,7 @@
 	<!-- ═══════════════════════════════════════ -->
 
 	<TheorySection>
-		<h2>3. La méthode de Newton-Raphson</h2>
+		<h2 id="newton-raphson">3. La méthode de Newton-Raphson</h2>
 
 		<p>
 			La descente de gradient n'utilise que l'information du premier ordre (gradient). La méthode de
@@ -388,7 +426,7 @@
 	<!-- ═══════════════════════════════════════ -->
 
 	<TheorySection>
-		<h2>4. Synthèse : quelle méthode choisir ?</h2>
+		<h2 id="synthese-methodes">4. Synthèse : quelle méthode choisir ?</h2>
 
 		<p>Nous avons vu quatre méthodes d'optimisation au cours de cette partie :</p>
 

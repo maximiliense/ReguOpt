@@ -6,6 +6,7 @@
 	import DefinitionBlock from '$lib/components/narrative/DefinitionBlock.svelte';
 	import ExampleBlock from '$lib/components/narrative/ExampleBlock.svelte';
 	import Callout from '$lib/components/narrative/Callout.svelte';
+	import TableOfContents from '$lib/components/narrative/TableOfContents.svelte';
 	import KatexBlock from '$lib/components/narrative/KatexBlock.svelte';
 	import KatexInline from '$lib/components/narrative/KatexInline.svelte';
 	import Bibliography from '$lib/components/narrative/bib/Bibliography.svelte';
@@ -22,6 +23,72 @@
 	const meta = getPageByPath('/part1/lesson3');
 	const prevMeta = $derived(getPrevPage(meta?.index ?? 0));
 	const nextMeta = $derived(getNextPage(meta?.index ?? 0));
+
+	// ── Table of Contents ────────────────────────────────
+
+	interface TocEntry {
+		id: string;
+		label: string;
+		description?: string;
+		color: 'epistemic' | 'positive' | 'neutral' | 'belief' | 'surprise' | 'agent';
+	}
+
+	const tocEntries: TocEntry[] = [
+		{
+			id: 'introduction',
+			label: 'Introduction',
+			description: 'Les algorithmes les plus utilisés en optimisation',
+			color: 'epistemic'
+		},
+		{
+			id: 'descente-gradient-classique',
+			label: 'Descente de gradient classique',
+			description: 'Principe général, mise à jour itérative',
+			color: 'neutral'
+		},
+		{
+			id: 'intuition-geometrique',
+			label: 'Intuition géométrique',
+			description: 'Direction de plus forte descente par Cauchy-Schwarz',
+			color: 'belief'
+		},
+		{
+			id: 'justification-taylor',
+			label: 'Justification par développement limité',
+			description: "Décroissance locale par Taylor à l'ordre 1",
+			color: 'positive'
+		},
+		{
+			id: 'choix-pas-apprentissage',
+			label: "Choix du pas d'apprentissage",
+			description: 'Pas constant, recherche linéaire, pas décroissant',
+			color: 'neutral'
+		},
+		{
+			id: 'convergence-fonctions-convexes',
+			label: 'Convergence pour les fonctions convexes',
+			description: 'Taux O(1/k), forte convexité, taux linéaire',
+			color: 'belief'
+		},
+		{
+			id: 'momentum-acceleres',
+			label: 'Momentum et méthodes accélérées',
+			description: 'Polyak, moyenne exponentielle mobile',
+			color: 'surprise'
+		},
+		{
+			id: 'methode-nesterov',
+			label: 'Méthode de Nesterov',
+			description: 'NAG — gradient anticipé, taux O(1/k²)',
+			color: 'agent'
+		},
+		{
+			id: 'synthese-lecon',
+			label: 'Synthèse de la leçon',
+			description: 'Récapitulatif des algorithmes et hyperparamètres',
+			color: 'epistemic'
+		}
+	];
 
 	// ── Formulas ────────────────────────────────────────
 
@@ -89,7 +156,9 @@
 	<!-- ════════════════════════════════════════════════ -->
 
 	<TheorySection>
-		<h2>Introduction</h2>
+		<TableOfContents entries={tocEntries} />
+
+		<h2 id="introduction">Introduction</h2>
 
 		<p>
 			Les algorithmes de descente de gradient sont les méthodes les plus utilisées en optimisation,
@@ -109,7 +178,7 @@
 	<!-- ════════════════════════════════════════════════ -->
 
 	<TheorySection>
-		<h2>Descente de gradient classique</h2>
+		<h2 id="descente-gradient-classique">Descente de gradient classique</h2>
 
 		<h3>Principe général</h3>
 
@@ -144,7 +213,7 @@
 	<!-- ════════════════════════════════════════════════ -->
 
 	<TheorySection>
-		<h2>Intuition géométrique</h2>
+		<h2 id="intuition-geometrique">Intuition géométrique</h2>
 
 		<p>
 			Pourquoi se déplacer dans la direction −∇f(x) est-il une bonne idée ? La réponse vient de
@@ -173,7 +242,7 @@
 	<!-- ════════════════════════════════════════════════ -->
 
 	<TheorySection>
-		<h2>Justification par développement limité</h2>
+		<h2 id="justification-taylor">Justification par développement limité</h2>
 
 		<TheoremBlock number="3.3" title="Décroissance locale">
 			Si f est C¹ et ∇f(x) ≠ 0, alors pour α suffisamment petit :
@@ -204,7 +273,7 @@
 	<!-- ════════════════════════════════════════════════ -->
 
 	<TheorySection>
-		<h2>Choix du pas d'apprentissage</h2>
+		<h2 id="choix-pas-apprentissage">Choix du pas d'apprentissage</h2>
 
 		<p>Le choix du pas α est critique pour la convergence. Trois stratégies principales :</p>
 
@@ -248,7 +317,7 @@
 	<!-- ════════════════════════════════════════════════ -->
 
 	<TheorySection>
-		<h2>Convergence pour les fonctions convexes</h2>
+		<h2 id="convergence-fonctions-convexes">Convergence pour les fonctions convexes</h2>
 
 		<TheoremBlock number="3.4" title="Convergence — cas convexe">
 			Supposons que f est convexe, L-lisse (gradient L-Lipschitz) et admet un minimum x*. Si on
@@ -278,7 +347,7 @@
 	<!-- ════════════════════════════════════════════════ -->
 
 	<TheorySection>
-		<h2>Momentum et méthodes accélérées</h2>
+		<h2 id="momentum-acceleres">Momentum et méthodes accélérées</h2>
 
 		<p>
 			Lorsque la fonction présente des vallées étroites ou un conditionnement défavorable, le GD
@@ -318,7 +387,7 @@
 	<!-- ════════════════════════════════════════════════ -->
 
 	<TheorySection>
-		<h2>Méthode de Nesterov</h2>
+		<h2 id="methode-nesterov">Méthode de Nesterov</h2>
 
 		<p>
 			Nesterov (1983) a montré qu'une petite modification du momentum permet d'atteindre le taux de
@@ -378,7 +447,7 @@
 	<!-- ════════════════════════════════════════════════ -->
 
 	<TheorySection>
-		<h2>Synthèse de la leçon</h2>
+		<h2 id="synthese-lecon">Synthèse de la leçon</h2>
 
 		<p>Cette leçon couvre les fondements des algorithmes itératifs d'optimisation :</p>
 
