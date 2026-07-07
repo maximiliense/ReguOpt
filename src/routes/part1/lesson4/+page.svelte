@@ -121,10 +121,6 @@
 		'f(x^{(k)} + \\alpha_k d_k) \\leq f(x^{(k)}) + c_1 \\alpha_k \\nabla f(x^{(k)})^\\top d_k';
 	const hessianCostCubic = 'O(d^3)';
 	const eDefNewton = 'e_k = x^{(k)} - x^*';
-
-	// ── Synthèse ──
-	const gdRateStrongConvex = 'O(\\rho^k), \\ \\rho < 1';
-	const sgdRateExpectation = 'O(1/\\sqrt{k})';
 </script>
 
 <svelte:head>
@@ -242,7 +238,9 @@
 
 		<DefinitionBlock number="4.1" title="Descente de gradient stochastique (SGD)">
 			<p>
-				Soit <KatexInline formula={fMeanForm} /> avec chaque <KatexInline formula="f_i" />
+				Soit <KatexInline formula={fMeanForm} /> avec chaque <KatexInline
+					formula={String.raw`f_i`}
+				/>
 				différentiable. L'algorithme SGD itère :
 			</p>
 			<KatexBlock formula={sgdUpdate} />
@@ -322,18 +320,19 @@
 		</DefinitionBlock>
 
 		<p>
-			Cette formule interpole exactement entre les deux cas extrêmes : en posant <KatexInline
-				formula="B=1"
-			/>, on retrouve le SGD pur (Définition 4.1) ; en posant <KatexInline formula="B=n" />, on
-			retrouve le gradient exact. Le paramètre <KatexInline formula={BSym} /> permet donc de choisir continûment
-			un point sur ce spectre.
+			C'est la formule interpole exactement entre les deux cas extrêmes : en posant <KatexInline
+				formula={String.raw`B=1`}
+			/>, on retrouve le SGD pur (Définition 4.1) ; en posant <KatexInline
+				formula={String.raw`B=n`}
+			/>, on retrouve le gradient exact. Le paramètre <KatexInline formula={BSym} /> permet donc de choisir
+			continûment un point sur ce spectre.
 		</p>
 
 		<Callout type="intuition" title="Le compromis coût / variance">
-			En pratique, <KatexInline formula="B \in [8, 256]" /> donne le meilleur rapport précision/coût pour
-			la plupart des applications de deep learning. Augmenter <KatexInline formula={BSym} /> réduit la
-			variance du bruit de gradient — approximativement selon une loi en <KatexInline
-				formula="1/B"
+			En pratique, <KatexInline formula={String.raw`B \in [8, 256]`} /> donne le meilleur rapport précision/coût
+			pour la plupart des applications de deep learning. Augmenter <KatexInline formula={BSym} /> réduit
+			la variance du bruit de gradient — approximativement selon une loi en <KatexInline
+				formula={String.raw`1/B`}
 			/>, comme le montre le graphique interactif ci-dessous — mais augmente proportionnellement le
 			coût de calcul d'un pas. Doubler la taille du batch ne fait donc pas nécessairement progresser
 			deux fois plus vite : cela réduit le bruit tout en doublant le coût, un arbitrage qui dépend
@@ -372,11 +371,11 @@
 
 		<p>
 			Ces deux conditions ont chacune un rôle précis, qu'il vaut la peine de dissocier. La première,
-			<KatexInline formula="\sum \alpha_k = +\infty" />, garantit que la somme cumulée des pas est
-			suffisamment grande pour que l'algorithme puisse parcourir n'importe quelle distance finie
-			depuis son point de départ — sans elle, les pas pourraient décroître trop vite et l'algorithme
-			resterait bloqué avant d'atteindre l'optimum. La seconde, <KatexInline
-				formula="\sum \alpha_k^2 < +\infty"
+			<KatexInline formula={String.raw`\sum \alpha_k = +\infty`} />, garantit que la somme cumulée
+			des pas est suffisamment grande pour que l'algorithme puisse parcourir n'importe quelle
+			distance finie depuis son point de départ — sans elle, les pas pourraient décroître trop vite
+			et l'algorithme resterait bloqué avant d'atteindre l'optimum. La seconde, <KatexInline
+				formula={String.raw`\sum \alpha_k^2 < +\infty`}
 			/>, garantit que le bruit accumulé au fil des itérations reste borné — sans elle, la variance
 			du bruit stochastique ne s'amortirait jamais et empêcherait toute convergence précise.
 		</p>
@@ -399,9 +398,10 @@
 				<li>
 					<strong>Cosine annealing :</strong>
 					<KatexInline formula={stepCosine} /> — ne satisfait pas non plus Robbins-Monro au sens strict
-					(le pas ne tend généralement pas vers 0 sur un horizon fini <KatexInline formula="K" />),
-					mais est très populaire en deep learning car elle combine une décroissance progressive
-					avec des redémarrages permettant d'échapper à des minima locaux médiocres.
+					(le pas ne tend généralement pas vers 0 sur un horizon fini <KatexInline
+						formula={String.raw`K`}
+					/>), mais est très populaire en deep learning car elle combine une décroissance
+					progressive avec des redémarrages permettant d'échapper à des minima locaux médiocres.
 				</li>
 			</ul>
 		</ExampleBlock>
@@ -442,9 +442,10 @@
 
 		<DefinitionBlock number="4.6" title="Coordinate Descent cyclique">
 			<p>
-				Soit <KatexInline formula={fRdToR} />. À chaque itération <KatexInline formula="k" />, on
-				choisit une coordonnée <KatexInline formula="j_k" /> (par cycle : <KatexInline
-					formula="1,2,\dots,d,1,2,\dots"
+				Soit <KatexInline formula={fRdToR} />. À chaque itération <KatexInline
+					formula={String.raw`k`}
+				/>, on choisit une coordonnée <KatexInline formula={String.raw`j_k`} /> (par cycle : <KatexInline
+					formula={String.raw`1,2,\dots,d,1,2,\dots`}
 				/>) et on met à jour :
 			</p>
 			<KatexBlock formula={cdUpdate} />

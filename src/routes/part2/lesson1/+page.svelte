@@ -4,7 +4,7 @@
 	import InteractiveSection from '$lib/components/narrative/InteractiveSection.svelte';
 	import DefinitionBlock from '$lib/components/narrative/DefinitionBlock.svelte';
 	import TheoremBlock from '$lib/components/narrative/TheoremBlock.svelte';
-
+	import ExampleBlock from '$lib/components/narrative/ExampleBlock.svelte';
 	import ExercisePanel from '$lib/components/narrative/ExercisePanel.svelte';
 	import Callout from '$lib/components/narrative/Callout.svelte';
 	import KatexBlock from '$lib/components/narrative/KatexBlock.svelte';
@@ -47,13 +47,21 @@
 	const aggAvg = '\\hat{y}(x) = \\frac{1}{m}\\sum_{j=1}^{m} y_j(x)';
 	const predictorModel = '\\hat{y}_j(x) = y(x) + \\varepsilon_j';
 	const epsCentered = '\\mathbb{E}[\\varepsilon_j] = 0';
+	const varDecompStep1 =
+		'\\bigl(y(X) - \\hat{y}(X)\\bigr)^2 = \\Bigl(\\tfrac{1}{m}\\sum_{j=1}^{m} \\varepsilon_j\\Bigr)^2';
 	const varEq1 =
-		'\\mathbb{E}\\Bigl[\\bigl(y(X) - \\tfrac{1}{m}\\sum_{j=1}^{m} \\hat{y}_j(X)\\bigr)^2\\Bigr] = \\mathbb{E}\\Bigl[(\\tfrac{1}{m}\\sum_{j=1}^{m} \\varepsilon_j\\bigr)^2\\Bigr]';
+		'\\mathbb{E}\\Bigl[\\bigl(y(X) - \\tfrac{1}{m}\\sum_{j=1}^{m} \\hat{y}_j(X)\\bigr)^2\\Bigr] = \\mathbb{E}\\Bigl[\\bigl(\\tfrac{1}{m}\\sum_{j=1}^{m} \\varepsilon_j\\bigr)^2\\Bigr]';
+	const varExpand =
+		'\\Bigl(\\tfrac{1}{m}\\sum_{j=1}^{m} \\varepsilon_j\\Bigr)^2 = \\frac{1}{m^2}\\sum_{j=1}^m \\varepsilon_j^2 + \\frac{1}{m^2}\\sum_{j \\neq k} \\varepsilon_j \\varepsilon_k';
 	const epsIndependant = '\\mathbb{E}[\\varepsilon_j \\varepsilon_k] = 0';
 	const jneqk = 'j \\neq k';
 	const varReduced =
 		'\\mathbb{E}\\Bigl[\\bigl(\\tfrac{1}{m}\\sum_{j=1}^{m} \\varepsilon_j\\bigr)^2\\Bigr] = \\frac{1}{m}\\,\\mathbb{E}[\\varepsilon^2]';
 	const mSym = 'm';
+	const varCorrelated =
+		'\\mathbb{E}\\Bigl[\\bigl(\\tfrac{1}{m}\\sum_{j=1}^{m} \\varepsilon_j\\bigr)^2\\Bigr] = \\rho\\,\\sigma_\\varepsilon^2 + \\frac{1-\\rho}{m}\\,\\sigma_\\varepsilon^2';
+	const rhoSym = '\\rho';
+	const rhoLimitInfty = '\\lim_{m \\to \\infty} \\text{Var} = \\rho\\,\\sigma_\\varepsilon^2';
 
 	// Majority voting
 	const modelsFamily = '\\{h_j\\}_{j=1}^m';
@@ -64,8 +72,13 @@
 	// Average regression
 	const avgRegBlock = '\\hat{y}(x) = \\frac{1}{m}\\sum_{j=1}^{m} h_j(x)';
 
-	// Error threshold exercise
+	// Condorcet / error threshold exercise
 	const errLtHalf = 'e < 0.5';
+	const majorityFailsBlock =
+		'\\mathbb{P}(\\text{vote majoritaire faux}) = \\mathbb{P}\\Bigl(\\text{Binomial}(m, e) > m/2\\Bigr)';
+	const hoeffdingBound =
+		'\\mathbb{P}\\Bigl(\\text{Binomial}(m, e) > m/2\\Bigr) \\leq \\exp\\bigl(-2m(0.5 - e)^2\\bigr)';
+	const errGeHalf = 'e \\geq 0.5';
 
 	// BMA
 	const mSymCap = 'M';
@@ -100,12 +113,15 @@
 	const bootSampleJ = 'S_n^{(j)}';
 	const modelTrained = 'h_j = \\mathcal{A}(S_n^{(j)})';
 
-	// Theorem 5.2 — Bagging variance
+	// Theorem 5.6 — Bagging variance
 	const sigmaSq = '\\sigma^2';
 	const sigmaReduction = '\\sigma^2 / M';
 
 	// OOB
 	const xiYi = '(x_i, y_i)';
+	const oobEstimate =
+		'\\widehat{\\text{Err}}_{\\text{OOB}} = \\frac{1}{n}\\sum_{i=1}^n \\ell\\Bigl(\\tfrac{1}{|C_i|}\\sum_{j \\in C_i} h_j(x_i),\\; y_i\\Bigr)';
+	const CiDef = 'C_i = \\{j : (x_i,y_i) \\notin S_n^{(j)}\\}';
 </script>
 
 <svelte:head>
@@ -122,30 +138,48 @@
 	<TheorySection>
 		<h2>Introduction aux méthodes ensemblistes</h2>
 		<p>
-			Les méthodes ensemblistes constituent l'une des approches les plus efficaces en apprentissage
-			automatique. L'idée fondamentale est simple : <strong
-				>combiner plusieurs modèles pour obtenir de meilleures performances qu'avec un modèle unique</strong
-			>.
+			La Partie I de ce cours s'est concentrée sur un seul modèle à la fois : comment garantir
+			l'existence d'un minimum (Leçon 1), quand la convexité permet de le trouver globalement (Leçon
+			2), et par quels algorithmes on l'atteint en pratique (Leçons 3 et 4). Cette nouvelle partie
+			change de perspective : plutôt que d'optimiser <em>un</em> modèle du mieux possible, les
+			<strong>méthodes ensemblistes</strong> combinent plusieurs modèles, chacun potentiellement imparfait,
+			pour obtenir des performances supérieures à celles de n'importe lequel d'entre eux pris isolément.
+			C'est l'une des idées les plus efficaces et les plus robustes de tout l'apprentissage automatique
+			moderne — des forêts aléatoires jusqu'au boosting, en passant par les ensembles de réseaux de neurones.
 		</p>
 
 		<h3>Cadre théorique</h3>
-		Soit <KatexInline formula={calX} /> notre espace d'entrée et <KatexInline formula={calY} /> notre
-		espace de sortie. Soit <KatexInline formula={xyInXY} /> deux variables aléatoires et soit <KatexInline
-			formula={PJoint}
-		/> leur mesure jointe. Notre objectif est de trouver une application <KatexInline
-			formula={hMap}
-		/> qui minimise une certaine erreur que nous noterons <KatexInline formula="L" />.
 		<p>
-			N'ayant pas accès aux variables aléatoires, nous collectons un jeu de données <KatexInline
+			Soit <KatexInline formula={calX} /> notre espace d'entrée et <KatexInline formula={calY} /> notre
+			espace de sortie. Soit <KatexInline formula={xyInXY} /> deux variables aléatoires et soit <KatexInline
+				formula={PJoint}
+			/> leur mesure jointe. Notre objectif est de trouver une application <KatexInline
+				formula={hMap}
+			/> qui minimise une certaine erreur que nous noterons <KatexInline formula="L" />.
+		</p>
+		<p>
+			N'ayant pas accès aux variables aléatoires elles-mêmes, nous collectons un jeu de données <KatexInline
 				formula={snDef}
 			/> et construisons le risque empirique :
 		</p>
 		<KatexBlock formula={empRiskBlock} />
 		<p>
-			où <KatexInline formula={ellSym} /> définit une erreur élémentaire pour une unique prédiction.
+			où <KatexInline formula={ellSym} /> définit une erreur élémentaire pour une unique prédiction. Ce
+			cadre est identique à celui utilisé implicitement en Leçon 2 de la Partie I, où <KatexInline
+				formula="L_n"
+			/> jouait déjà le rôle de fonction objectif à minimiser — la nouveauté ici est que nous allons combiner
+			<em>plusieurs</em>
+			solutions <KatexInline formula="h" /> plutôt que d'en chercher une seule.
 		</p>
 
 		<h3>Motivation théorique — Réduction de variance</h3>
+		<p>
+			Pourquoi combiner des modèles devrait-il fonctionner ? Le résultat suivant, élémentaire mais
+			fondamental, en donne la première justification rigoureuse : moyenner des estimateurs bruités
+			mais indépendants réduit strictement leur variance, sans jamais introduire de biais
+			supplémentaire.
+		</p>
+
 		<TheoremBlock number="5.1" title="Réduction de variance par agrégation">
 			<p>
 				Considérons une famille de prédicteurs <KatexInline formula={predictorsFamily} /> et leur agrégation
@@ -167,6 +201,31 @@
 			<p>La variance est <strong>réduite d'un facteur <KatexInline formula={mSym} /></strong> !</p>
 		</TheoremBlock>
 
+		<div class="proof-block">
+			<p><strong>Démonstration :</strong></p>
+			<p>
+				Puisque <KatexInline formula={String.raw`\hat{y}(X) = \tfrac{1}{m}\sum_j \hat{y}_j(X)`} /> et
+				que chaque <KatexInline formula={String.raw`\hat{y}_j(X) = y(X) + \varepsilon_j`} />,
+				l'écart entre la vraie valeur et l'agrégation se réduit exactement au bruit moyen :
+			</p>
+			<KatexBlock formula={varDecompStep1} />
+			<p>En développant le carré de la somme :</p>
+			<KatexBlock formula={varExpand} />
+			<p>
+				Le premier terme a pour espérance <KatexInline
+					formula={String.raw`\sigma_\varepsilon^2 / m`}
+				/> (où <KatexInline
+					formula={String.raw`\sigma_\varepsilon^2 = \mathbb{E}[\varepsilon^2]`}
+				/>). Sous l'hypothèse d'indépendance, chaque terme croisé <KatexInline
+					formula={String.raw`\mathbb{E}[\varepsilon_j \varepsilon_k]`}
+				/> pour <KatexInline formula={jneqk} /> s'annule exactement — c'est précisément l'hypothèse <KatexInline
+					formula={epsIndependant}
+				/>. Il ne reste donc que le premier terme, ce qui donne <KatexInline
+					formula={varReduced}
+				/>. ∎
+			</p>
+		</div>
+
 		<Callout type="warning" title="Remarque cruciale">
 			<p>
 				Cette réduction de variance n'est effective que si les modèles font des erreurs <strong
@@ -174,6 +233,33 @@
 				>. Si tous les modèles se trompent de la même manière, l'agrégation n'apporte rien.
 			</p>
 		</Callout>
+
+		<ExampleBlock number="5.1.1" title="Le cas réaliste : erreurs corrélées">
+			<p>
+				En pratique, les prédicteurs <KatexInline formula="h_j" /> sont tous entraînés sur des données
+				issues de la même distribution, et souvent avec le même algorithme — leurs erreurs ne sont donc
+				jamais parfaitement indépendantes. Si l'on suppose une corrélation constante
+				<KatexInline formula={rhoSym} /> entre chaque paire d'erreurs, un calcul similaire à la démonstration
+				ci-dessus donne :
+			</p>
+			<KatexBlock formula={varCorrelated} />
+			<p>
+				Le second terme continue de décroître en <KatexInline formula="1/m" />, exactement comme
+				dans le cas indépendant. Mais le premier terme, <KatexInline
+					formula="\rho\,\sigma_\varepsilon^2"
+				/>, ne dépend pas de <KatexInline formula="m" /> : ajouter des modèles au-delà d'un certain point
+				n'apporte donc plus qu'un gain marginal, et la variance résiduelle est bornée inférieurement par
+			</p>
+			<KatexBlock formula={rhoLimitInfty} />
+			<p>
+				Cette observation est la motivation directe des méthodes vues plus loin dans cette leçon (le
+				bagging) et dans la suite du cours (les forêts aléatoires) : l'objectif n'est pas seulement
+				d'agréger des modèles, mais de <strong
+					>réduire activement la corrélation <KatexInline formula={rhoSym} /> entre eux</strong
+				>, précisément parce que c'est ce terme, et non le nombre de modèles, qui borne le gain
+				possible.
+			</p>
+		</ExampleBlock>
 
 		<InteractiveSection tag="Variance par agrégation">
 			<VarianceReductionDemo />
@@ -184,11 +270,13 @@
 	<TheorySection>
 		<h2>L'approche naïve : combiner plusieurs modèles</h2>
 		<p>
-			L'approche la plus simple pour combiner plusieurs modèles consiste à moyenner leurs
-			prédictions ou à prendre le vote majoritaire.
+			Le Théorème 5.1 nous dit que moyenner des prédicteurs bruités réduit la variance — mais il
+			suppose que les modèles agrégés produisent des valeurs numériques continues. Formalisons
+			maintenant comment cette idée s'adapte aux deux cadres les plus courants de l'apprentissage
+			supervisé : la classification et la régression.
 		</p>
 
-		<DefinitionBlock number="5.1" title="Vote majoritaire">
+		<DefinitionBlock number="5.2" title="Vote majoritaire">
 			<p>
 				Pour un problème de classification avec <KatexInline formula={mSym} /> modèles <KatexInline
 					formula={modelsFamily}
@@ -202,13 +290,17 @@
 			<EnsembleBoundaryVisualizer />
 		</InteractiveSection>
 
-		<DefinitionBlock number="5.2" title="Moyenne pour la régression">
+		<DefinitionBlock number="5.3" title="Moyenne pour la régression">
 			<p>
 				Pour un problème de régression avec <KatexInline formula={mSym} /> modèles <KatexInline
 					formula={modelsFamily}
 				/>, la prédiction finale est :
 			</p>
 			<KatexBlock formula={avgRegBlock} />
+			<p>
+				C'est exactement l'agrégation étudiée dans le Théorème 5.1 — le vote majoritaire (Définition
+				5.2) en est l'analogue pour des sorties discrètes.
+			</p>
 		</DefinitionBlock>
 
 		<h3>Conditions de succès</h3>
@@ -222,15 +314,41 @@
 		<Callout type="warning" title="Attention">
 			<p>
 				Si tous les modèles se trompent sur les mêmes exemples, l'agrégation n'améliore rien ! Le
-				défi principal est donc de <strong>créer de la diversité</strong> entre les modèles.
+				défi principal est donc de <strong>créer de la diversité</strong> entre les modèles — un problème
+				que l'approche naïve ne résout pas d'elle-même : entraîner le même algorithme sur le même jeu
+				de données produit toujours le même modèle. C'est précisément la limite que le bagging, en fin
+				de leçon, est conçu pour lever.
 			</p>
 		</Callout>
 
 		<ExercisePanel number="5.1" title="Majorité vs Individu">
 			{#snippet solution()}
 				<p>
-					Implémentez une classe qui combine plusieurs classifieurs par vote majoritaire et comparez
-					son accuracy avec celle du meilleur individu.
+					Notons <KatexInline formula="e < 0.5" /> le taux d'erreur commun à chaque classifieur, et supposons
+					les erreurs indépendantes. Le vote majoritaire se trompe si et seulement si
+					<strong>strictement plus de la moitié</strong> des <KatexInline formula={mSym} /> classifieurs
+					se trompent simultanément — un événement dont la probabilité suit une loi binomiale :
+				</p>
+				<KatexBlock formula={majorityFailsBlock} />
+				<p>
+					Par l'inégalité de concentration de Hoeffding (applicable car chaque classifieur se trompe
+					de façon indépendante avec probabilité <KatexInline formula="e" />) :
+				</p>
+				<KatexBlock formula={hoeffdingBound} />
+				<p>
+					Puisque <KatexInline formula={errLtHalf} />, le terme <KatexInline
+						formula="(0.5 - e)^2"
+					/> est strictement positif, donc cette borne
+					<strong>décroît exponentiellement vite vers 0</strong>
+					quand <KatexInline formula={mSym} /> augmente. Le vote majoritaire est donc arbitrairement plus
+					précis que chaque classifieur individuel, à condition d'ajouter suffisamment de modèles indépendants.
+					C'est le <strong>théorème du jury de Condorcet</strong>
+					(1785), l'un des tout premiers résultats mathématiques sur l'agrégation de décisions. Notez
+					que si <KatexInline formula={errGeHalf} />, l'inégalité s'inverse : agréger des
+					classifieurs individuellement pires que le hasard ne fait qu'empirer la situation à mesure
+					que <KatexInline formula={mSym} /> augmente — la condition <KatexInline
+						formula={errLtHalf}
+					/> est donc essentielle, pas une simplification technique.
 				</p>
 			{/snippet}
 			<p>
@@ -244,11 +362,13 @@
 	<TheorySection>
 		<h2>Bayesian Model Averaging (BMA)</h2>
 		<p>
-			L'approche bayésienne permet de pondérer les modèles selon leur vraisemblance a posteriori
-			plutôt que de leur donner tous le même poids.
+			L'agrégation naïve (Section 2) donne le même poids à chaque modèle, qu'il soit excellent ou
+			médiocre. L'approche bayésienne corrige ce défaut en pondérant chaque modèle selon sa
+			vraisemblance a posteriori — une formalisation directe du principe intuitif « faire davantage
+			confiance aux modèles qui expliquent mieux les données observées ».
 		</p>
 
-		<DefinitionBlock number="5.3" title="Bayesian Model Averaging">
+		<DefinitionBlock number="5.4" title="Bayesian Model Averaging">
 			<p>
 				Soit une famille de <KatexInline formula={mSymCap} /> modèles probabilistes <KatexInline
 					formula={modelFamilyCal}
@@ -279,6 +399,21 @@
 			/>, et <KatexInline formula={priorJ} /> la probabilité a priori (souvent uniforme).
 		</p>
 
+		<Callout type="intuition" title="Un rasoir d'Occam automatique">
+			<p>
+				Un avantage souvent sous-estimé du BMA est qu'il pénalise <em>implicitement</em> les modèles
+				trop complexes, sans qu'aucun terme de régularisation explicite ne soit ajouté à la main. Un
+				modèle avec beaucoup de paramètres peut s'ajuster à un plus grand nombre de jeux de données
+				possibles, ce qui dilue sa vraisemblance <KatexInline
+					formula={String.raw`p(\mathcal{D}|\mathcal{M}_j)`}
+				/> sur chacun d'entre eux individuellement (la vraisemblance totale, intégrée sur tous les jeux
+				de données possibles, doit sommer à 1). Ce phénomène, parfois appelé « rasoir d'Occam bayésien
+				», favorise naturellement les modèles parcimonieux sans nécessiter de terme de pénalité additionnel
+				— une idée que nous retrouverons sous une forme différente lorsque nous étudierons la régularisation
+				explicite (Ridge, Lasso) dans les leçons suivantes.
+			</p>
+		</Callout>
+
 		<Callout type="intuition" title="Implémentation pratique">
 			<p>
 				En pratique, on travaille avec les log-probabilités pour éviter les problèmes numériques :
@@ -291,7 +426,13 @@
 				<p>
 					Pour un modèle probabiliste, la log-vraisemblance est <KatexInline
 						formula={logLikelihood}
-					/>.
+					/>. Il suffit d'accumuler cette somme pour chaque modèle <KatexInline
+						formula={String.raw`\mathcal{M}_j`}
+					/> sur le jeu d'entraînement, d'y ajouter le log-prior <KatexInline
+						formula={String.raw`\log p(\mathcal{M}_j)`}
+					/> (nul si le prior est uniforme), puis de normaliser via la formule de la Callout ci-dessus
+					(le terme <KatexInline formula={String.raw`\text{\{logsumexp\}	`} /> évite les débordements numériques
+					de l'exponentiation).
 				</p>
 			{/snippet}
 			<p>
@@ -316,12 +457,17 @@
 	<TheorySection>
 		<h2>Bagging (Bootstrap Aggregating)</h2>
 		<p>
-			La difficulté principale avec l'agrégation naïve est que pour une classe de modèles donnée, un
-			même jeu d'apprentissage produit la même solution. Le <strong>bagging</strong> résout ce problème
-			en créant de la variabilité via des échantillons bootstrap.
+			La difficulté principale avec l'agrégation naïve (Section 2) et le BMA (Section 3) est que,
+			pour une classe de modèles donnée, un même jeu d'apprentissage produit toujours la même
+			solution : entraîner dix fois le même arbre de décision sur les mêmes données donne dix fois
+			le même arbre, et l'agréger avec lui-même n'apporte évidemment aucune réduction de variance.
+			Or nous avons vu dans l'Exemple 5.1.1 que c'est justement la corrélation entre modèles qui
+			borne le gain de l'agrégation. Le <strong>bagging</strong> (Bootstrap Aggregating) résout ce
+			problème en créant artificiellement de la variabilité entre les jeux d'entraînement, via des
+			<strong>échantillons bootstrap</strong>.
 		</p>
 
-		<DefinitionBlock number="5.4" title="Échantillon Bootstrap">
+		<DefinitionBlock number="5.5" title="Échantillon Bootstrap">
 			<p>
 				Soit <KatexInline formula={snDefShort} /> un jeu de données de taille <KatexInline
 					formula={nSym}
@@ -345,9 +491,12 @@
 			<p>
 				La probabilité qu'un point donné ne soit pas sélectionné lors d'un tirage est <KatexInline
 					formula={oneMinusOneOverN}
-				/>. Après <KatexInline formula={nSym} /> tirages indépendants, cette probabilité devient <KatexInline
+				/>. Après <KatexInline formula={nSym} /> tirages indépendants (avec remise, donc chaque tirage
+				est indépendant des précédents), cette probabilité devient <KatexInline
 					formula={probNotSelected}
-				/>. Donc environ 63.2% des points sont inclus au moins une fois.
+				/>. Donc environ 63.2% des points sont inclus au moins une fois, et les 36.8% restants
+				forment naturellement un ensemble de validation gratuit pour ce modèle particulier — c'est
+				précisément l'idée exploitée par l'erreur out-of-bag, définie plus loin.
 			</p>
 		</Callout>
 
@@ -370,7 +519,8 @@
 					<li>Entraîner un modèle <KatexInline formula={modelTrained} /></li>
 				</ul>
 				<li>
-					<strong>Sortie :</strong> Prédiction agrégée par moyenne (régression) ou vote majoritaire (classification)
+					<strong>Sortie :</strong> Prédiction agrégée par moyenne (régression, Définition 5.3) ou vote
+					majoritaire (classification, Définition 5.2)
 				</li>
 			</ol>
 		</div>
@@ -379,13 +529,20 @@
 			<BaggingConvergence />
 		</InteractiveSection>
 
-		<TheoremBlock number="5.2" title="Réduction de variance par bagging">
+		<TheoremBlock number="5.6" title="Réduction de variance par bagging">
 			<p>
 				Si les modèles de base ont une variance <KatexInline formula={sigmaSq} /> et sont décorrélés,
-				alors le modèle baggé a une variance <KatexInline formula={sigmaReduction} />
+				alors le modèle baggé a une variance <KatexInline formula={sigmaReduction} />.
 			</p>
 			<p>
-				En pratique, les modèles ne sont pas totalement décorrélés, mais le bagging réduit
+				Ce résultat est une application directe du Théorème 5.1 : le bootstrap ne change rien à la
+				formule elle-même, il ne fait que fournir un mécanisme concret pour rendre l'hypothèse
+				d'indépendance <em>approximativement</em> vraie en pratique, en entraînant chaque modèle sur un
+				sous-échantillon différent plutôt que sur les données identiques.
+			</p>
+			<p>
+				En pratique, les modèles ne sont jamais totalement décorrélés (ils partagent la même
+				distribution sous-jacente, comme le montre l'Exemple 5.1.1), mais le bagging réduit
 				significativement la variance pour les modèles <strong>instables</strong> (arbres de décision,
 				réseaux de neurones).
 			</p>
@@ -394,17 +551,27 @@
 		<Callout type="intuition" title="Intuition clé">
 			<p>
 				Le bagging stabilise les algorithmes <strong>instables</strong> — ceux qui changent beaucoup avec
-				de petites variations des données. Il n'aide en revanche pas les algorithmes déjà stables (comme
-				la régression linéaire).
+				de petites variations des données, comme un arbre de décision non élagué, dont la structure entière
+				peut changer si un seul point d'entraînement est déplacé. Il n'aide en revanche pas les algorithmes
+				déjà stables (comme la régression linéaire) : leur variance étant déjà faible, il n'y a essentiellement
+				rien à réduire, et le bagging n'apporte alors qu'un coût de calcul supplémentaire sans bénéfice
+				statistique.
 			</p>
 		</Callout>
 
 		<h3>Out-of-Bag (OOB) Error</h3>
-		<DefinitionBlock number="5.5" title="Out-of-Bag Error">
+		<DefinitionBlock number="5.7" title="Out-of-Bag Error">
 			<p>
-				Pour chaque exemple <KatexInline formula={xiYi} />, on peut évaluer la prédiction en
-				utilisant seulement les modèles pour lesquels cet exemple n'était pas dans l'échantillon
-				bootstrap correspondant.
+				Pour chaque exemple <KatexInline formula={xiYi} />, notons <KatexInline formula={CiDef} />
+				l'ensemble des modèles pour lesquels cet exemple n'était <strong>pas</strong> présent dans l'échantillon
+				bootstrap d'entraînement. L'erreur out-of-bag s'écrit :
+			</p>
+			<KatexBlock formula={oobEstimate} />
+			<p>
+				Autrement dit, chaque exemple est évalué uniquement par les modèles qui ne l'ont
+				<strong>jamais vu</strong> pendant leur propre entraînement — exactement comme s'il s'agissait
+				d'un ensemble de test indépendant, mais sans avoir eu besoin de mettre de côté la moindre donnée
+				au départ.
 			</p>
 			<p>
 				L'erreur OOB fournit une estimation non biaisée de l'erreur de généralisation <strong
@@ -421,7 +588,12 @@
 			{#snippet solution()}
 				<p>
 					Avec 100 arbres baggés, on observe typiquement une réduction significative de la variance
-					des prédictions comparée à un arbre unique.
+					des prédictions comparée à un arbre unique — l'erreur de test diminue notamment sur les
+					exemples proches des frontières de décision, là où un arbre isolé est le plus instable (un
+					petit changement dans les données d'entraînement suffit à déplacer la frontière). Le gain
+					de précision moyen est généralement plus modeste que la réduction de variance elle-même,
+					car le biais des arbres individuels — inchangé par le bagging, voir le Théorème 5.6 —
+					reste une composante de l'erreur totale que l'agrégation ne corrige pas.
 				</p>
 			{/snippet}
 			<p>
@@ -434,12 +606,17 @@
 			<ul>
 				<li>
 					Le <strong>bagging</strong> crée de la diversité via le bootstrap (échantillonnage avec remise)
+					— répondant directement à la limite identifiée dans l'Exemple 5.1.1 : la corrélation entre modèles
+					borne le gain de l'agrégation.
 				</li>
 				<li>
-					Il est particulièrement efficace pour les modèles <strong>instables</strong> à haute variance
+					Il est particulièrement efficace pour les modèles <strong>instables</strong> à haute variance,
+					et n'apporte rien aux modèles déjà stables.
 				</li>
-				<li>L'erreur OOB offre une estimation gratuite de la généralisation</li>
-				<li>Le gain dépend du degré de <strong>décorrélation</strong> entre les modèles de base</li>
+				<li>L'erreur OOB offre une estimation gratuite de la généralisation.</li>
+				<li>
+					Le gain dépend du degré de <strong>décorrélation</strong> entre les modèles de base.
+				</li>
 			</ul>
 		</Callout>
 	</TheorySection>
@@ -485,5 +662,19 @@
 
 	.algo-block ol {
 		padding-left: 1.5rem;
+	}
+
+	.proof-block {
+		padding: 1rem 1.5rem;
+		margin: 1rem 0;
+		border-left: 3px solid var(--color-positive, #4caf50);
+		background-color: color-mix(in srgb, var(--color-positive, #4caf50) 5%, transparent);
+		border-radius: 0 6px 6px 0;
+		font-size: 0.95em;
+		line-height: 1.7;
+	}
+
+	.proof-block p {
+		margin: 0.4rem 0;
 	}
 </style>
