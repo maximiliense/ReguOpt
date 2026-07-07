@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { tick } from 'svelte';
 	import type { Component } from 'svelte';
+	import { acquireDeferredSlot, releaseDeferredSlot } from '$lib/utils/deferredLoader';
 
 	interface Props {
 		load: () => Promise<{ default: Component }>;
@@ -20,18 +20,19 @@
 
 		started = true;
 
+		await acquireDeferredSlot();
+
 		try {
 			const module = await load();
 
-			// allow browser to finish current rendering work
+			// let browser paint before mounting
 			await new Promise(requestAnimationFrame);
 
 			LoadedComponent = module.default;
-
-			// allow Svelte to flush after mount
-			await tick();
 		} catch (error) {
 			errorMessage = error instanceof Error ? error.message : String(error);
+		} finally {
+			releaseDeferredSlot();
 		}
 	}
 
@@ -46,7 +47,7 @@
 				loadComponent();
 			},
 			{
-				rootMargin: '100px'
+				rootMargin: '150px'
 			}
 		);
 

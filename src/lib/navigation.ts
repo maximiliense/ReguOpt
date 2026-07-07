@@ -27,6 +27,7 @@ const RAW_PAGES = [
 	{ path: '/part2/lesson2', title: 'Random Forest & sélection de features', part: 2 },
 	{ path: '/part2/lesson3', title: 'Boosting (AdaBoost, Gradient Boosting)', part: 2 },
 	{ path: '/part2/lesson4', title: 'Régularisation L1/L2/Elastic Net', part: 2 },
+	{ path: '/part2/exercices', title: 'Exercices', part: 2 },
 
 	// Partie III — Prédiction d'ensembles
 	{ path: '/part3/lesson1', title: 'Classification Top-K', part: 3 },
