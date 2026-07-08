@@ -4,14 +4,14 @@
 	import Button from '$lib/components/controls/Button.svelte';
 	import Metrics from '$lib/components/layout/Metrics.svelte';
 
-	// ── Animation handle ──────────────────────────────────────────
-	let animInterval: ReturnType<typeof setInterval> | null = $state(null);
+	// ── Animation handle (plain, not reactive — it's an implementation detail) ──
+	let animInterval: ReturnType<typeof setInterval> | null = null;
 
 	// ── Core state ────────────────────────────────────────────────
 	let N = $state(20);
-	let counts = $state<number[]>([]); // how many times each point appears in current sample
+	let counts = $state<number[]>([]);
 	let animating = $state(false);
-	let animStep = $state(0); // which draw we're on during animation
+	let animStep = $state(0);
 	let lastDrawnIndex = $state<number | null>(null);
 
 	// ── Convergence study state ───────────────────────────────
@@ -21,7 +21,6 @@
 
 	const THEORETICAL_INCLUSION = 1 - 1 / Math.E; // ≈ 0.632
 
-	// ── Bootstrap sample generation ────────────────────────
 	function generateSample(n: number): number[] {
 		const result = new Array(n).fill(0);
 		for (let i = 0; i < n; i++) {
@@ -31,37 +30,46 @@
 		return result;
 	}
 
-	// ── Actions ────────────────────────────────────────────────
+	// FIX 3: always tear down any running animation first, regardless of which
+	// branch is about to run. The previous version never did this, so clicking
+	// "Nouveau tirage" (or changing N) while an animated draw was still
+	// in-flight left the old interval alive, silently corrupting `counts` after
+	// it had just been reset.
+	function stopAnimation() {
+		if (animInterval !== null) {
+			clearInterval(animInterval);
+			animInterval = null;
+		}
+		animating = false;
+	}
+
 	function newSample(animate = false) {
-		if (animating && animate) return;
+		stopAnimation();
 
 		counts = new Array(N).fill(0);
 		lastDrawnIndex = null;
+		animStep = 0;
 
 		if (animate) {
 			animating = true;
-			animStep = 0;
 			const draws: number[] = [];
 			for (let i = 0; i < N; i++) {
 				draws.push(Math.floor(Math.random() * N));
 			}
 
-			const interval = setInterval(
+			animInterval = setInterval(
 				() => {
 					if (animStep < N) {
 						lastDrawnIndex = draws[animStep];
 						counts[lastDrawnIndex]++;
 						animStep++;
 					} else {
-						clearInterval(interval);
-						animating = false;
+						stopAnimation();
 						lastDrawnIndex = null;
 					}
 				},
 				Math.max(30, 800 / N)
-			); // speed adapts to N
-
-			animInterval = interval;
+			);
 		} else {
 			counts = generateSample(N);
 			animStep = N;
@@ -69,36 +77,41 @@
 		}
 	}
 
-	function handleNSliderChange(newN: number) {
-		N = newN;
-		newSample(false);
-	}
-
-	onDestroy(() => {
-		if (animInterval) clearInterval(animInterval);
+	// FIX 2: drive resampling from N itself via a plain tracked comparison,
+	// instead of relying on a Slider `onchange` prop that this component's
+	// Slider API doesn't appear to support (every other usage in this codebase
+	// only wires up `bind:value`). This guarantees `counts` is always
+	// regenerated at the correct length whenever N changes, regardless of how
+	// the Slider reports changes internally.
+	let prevN = $state(-1);
+	$effect(() => {
+		if (prevN >= 0 && N !== prevN) {
+			newSample(false);
+		}
+		prevN = N;
 	});
+
+	onDestroy(stopAnimation);
 
 	// ── Derived statistics ────────────────────────────────
 	const completed = $derived(!animating || animStep >= N);
 
 	const oobCount = $derived(counts.filter((c) => c === 0).length);
 	const includedCount = $derived(N - oobCount);
-	const inclusionFraction = $derived(includedCount / N);
-	const oobFraction = $derived(oobCount / N);
+	const inclusionFraction = $derived(N > 0 ? includedCount / N : 0);
+	const oobFraction = $derived(N > 0 ? oobCount / N : 0);
 
 	const uniqueInSample = $derived(counts.filter((c) => c > 0).length);
 
-	// Average multiplicity among included points: total draws (=N) spread across unique points in sample
 	const avgMultiplicityIncluded = $derived.by(() => {
 		if (includedCount === 0) return 0;
-		return N / includedCount; // N draws divided by number of distinct points selected
+		return N / includedCount;
 	});
 
 	const maxCount = $derived(counts.length > 0 ? Math.max(...counts) : 0);
 	const onceCount = $derived(counts.filter((c) => c === 1).length);
 	const multiCount = $derived(counts.filter((c) => c > 1).length);
 
-	// ── Point color status ────────────────────────
 	function pointClass(i: number): string {
 		if (!completed && i === lastDrawnIndex) return 'point-flash';
 		const c = counts[i];
@@ -107,7 +120,6 @@
 		return 'point-multi';
 	}
 
-	// ── Convergence study ────────────────────────
 	function runConvergenceStudy() {
 		if (runningConvergence) return;
 		runningConvergence = true;
@@ -124,7 +136,7 @@
 
 			const n = sizes[idx];
 			let totalIncluded = 0;
-			const kSamples = Math.max(100, Math.floor(500 / (n / 20))); // more samples for small N
+			const kSamples = Math.max(100, Math.floor(500 / (n / 20)));
 
 			for (let s = 0; s < kSamples; s++) {
 				const sample = generateSample(n);
@@ -134,7 +146,7 @@
 			convergenceSizes[idx] = n;
 			convergenceEmpirical[idx] = totalIncluded / (kSamples * n);
 
-			setTimeout(() => runNext(idx + 1), 50); // stagger for visual effect
+			setTimeout(() => runNext(idx + 1), 50);
 		};
 
 		runNext(0);
@@ -142,7 +154,6 @@
 
 	const convergenceReady = $derived(convergenceSizes.length > 0 && !runningConvergence);
 
-	// Initialize with a sample on mount
 	newSample(false);
 </script>
 
@@ -150,14 +161,7 @@
 	<!-- ── Controls row ──────────────────────────────── -->
 	<div class="controls-section">
 		<div class="slider-group">
-			<Slider
-				bind:value={N}
-				min={5}
-				max={100}
-				step={1}
-				label="Nombre de points (N)"
-				onchange={handleNSliderChange}
-			/>
+			<Slider bind:value={N} min={5} max={100} step={1} label="Nombre de points (N)" />
 		</div>
 
 		<div class="buttons-row">
@@ -191,7 +195,6 @@
 		<figcaption class="panel-title">Données originales — {N} points indexés</figcaption>
 
 		{#if N <= 50}
-			<!-- For small N: show individual numbered circles -->
 			<div class="dots-row">
 				{#each [...Array(N).keys()] as i}
 					<div class={pointClass(i)}>
@@ -200,14 +203,12 @@
 				{/each}
 			</div>
 
-			<!-- Legend for point colors -->
 			<div class="legend-row">
 				<span class="legend-item legend-once">● Inclus (×1)</span>
 				<span class="legend-item legend-multi">● Dupliqué (≥×2)</span>
 				<span class="legend-item legend-oob">○ Hors sac (OOB)</span>
 			</div>
 		{:else}
-			<!-- For large N: summary bars instead of individual dots -->
 			<div class="summary-bands">
 				<div class="band band-once" style:width="{(onceCount / N) * 100}%"></div>
 				<div class="band band-multi" style:width="{(multiCount / N) * 100}%"></div>
@@ -231,8 +232,8 @@
 
 		<div class="histogram-container">
 			{#each [...Array(N).keys()] as i}
-				{@const c = counts[i]}
-				{@const pct = N > 0 ? (c / Math.max(maxCount, 1)) * 100 : 0}
+				{@const c = counts[i] ?? 0}
+				{@const pct = maxCount > 0 ? (c / maxCount) * 100 : 0}
 
 				<div class="bar-wrapper" data-index={i}>
 					{#if completed && c > 0}
@@ -240,18 +241,31 @@
 					{/if}
 					<div
 						class={`bar ${c === 0 ? 'bar-oob' : c === 1 ? 'bar-once' : 'bar-multi'}`}
-						style:height="${Math.max(pct, 2)}%"
+						style:height="{Math.max(pct, 2)}%"
 					></div>
 					{#if N <= 30}
 						<span class="bar-label">{i + 1}</span>
 					{/if}
 				</div>
 			{/each}
-
-			<!-- Y-axis reference line at expected value -->
-			<div class="hist-ref-line" style:top="72.3%"></div>
 		</div>
 	</figure>
+
+	<!-- ── Live inclusion gauge (wow #1: real-time single-draw convergence) ── -->
+	<div class="gauge-panel">
+		<div class="gauge-title">Fraction incluse en direct</div>
+		<div class="gauge-track">
+			<div class="gauge-fill" style:width="{inclusionFraction * 100}%"></div>
+			<div class="gauge-target" style:left="{THEORETICAL_INCLUSION * 100}%"></div>
+		</div>
+		<div class="gauge-labels">
+			<span>0%</span>
+			<span class="gauge-target-label" style:left="{THEORETICAL_INCLUSION * 100}%">
+				1 − 1/e ≈ 63.2%
+			</span>
+			<span>100%</span>
+		</div>
+	</div>
 
 	<!-- ── Statistics metrics row ──────────────────────── -->
 	<Metrics align="center">
@@ -316,15 +330,16 @@
 		</p>
 	</div>
 
-	<!-- ── Convergence chart panel ─────────────────────── -->
+	<!-- ── Convergence chart panel (wow #2: cross-N asymptotic behavior) ─── -->
 	{#if convergenceReady || runningConvergence}
 		<figure class="panel panel-convergence">
 			<figcaption class="panel-title">Convergence empirique vers 1 − 1/e ≈ 63,2 %</figcaption>
 
 			<div class="conv-chart">
-				<!-- Theoretical reference line -->
-				<div class="conv-ref-line"></div>
-				<span class="conv-ref-label">théorique: {(THEORETICAL_INCLUSION * 100).toFixed(1)}%</span>
+				<div class="conv-ref-line" style:bottom="{THEORETICAL_INCLUSION * 100}%"></div>
+				<span class="conv-ref-label" style:bottom="{THEORETICAL_INCLUSION * 100}%">
+					théorique: {(THEORETICAL_INCLUSION * 100).toFixed(1)}%
+				</span>
 
 				{#each convergenceSizes as size, i (i)}
 					{@const emp = convergenceEmpirical[i] ?? 0}
@@ -342,7 +357,6 @@
 					</div>
 				{/each}
 
-				<!-- Y-axis labels -->
 				<div class="conv-y-axis">
 					<span class="conv-y-tick" style:bottom="100%">80%</span>
 					<span class="conv-y-tick" style:bottom="63.2%">≈ 63%</span>
@@ -378,7 +392,6 @@
 		border-radius: var(--radius-md, 8px);
 	}
 
-	/* ── Controls ──────────────────────────────── */
 	.controls-section {
 		display: flex;
 		flex-direction: column;
@@ -396,7 +409,6 @@
 		align-items: center;
 	}
 
-	/* ── Animation progress bar ──────────────── */
 	.anim-progress {
 		position: relative;
 		height: 6px;
@@ -429,7 +441,6 @@
 		color: var(--color-text-muted);
 	}
 
-	/* ── Shared panel styles ─────────────── */
 	.panel {
 		margin: 0;
 		display: flex;
@@ -450,7 +461,6 @@
 		}
 	}
 
-	/* ── Panel 1: Original dots ─────────── */
 	.dots-row {
 		display: flex;
 		flex-wrap: wrap;
@@ -532,7 +542,6 @@
 		}
 	}
 
-	/* ── Summary bands (large N) ─────────── */
 	.summary-bands {
 		display: flex;
 		height: 24px;
@@ -563,7 +572,6 @@
 		font-size: 0.6875rem;
 	}
 
-	/* ── Panel 2: Histogram bars ─────────── */
 	.histogram-container {
 		display: flex;
 		align-items: flex-end;
@@ -621,17 +629,64 @@
 		margin-top: 2px;
 	}
 
-	.hist-ref-line {
-		position: absolute;
-		left: 0;
-		right: 0;
-		height: 1px;
-		border-top: 1px dashed var(--color-belief);
-		opacity: 0.4;
-		pointer-events: none;
+	.gauge-panel {
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+		padding: 0.6rem 0.875rem;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md, 8px);
+		background: var(--color-surface-2, transparent);
 	}
 
-	/* ── Math callout ─────────────────────── */
+	.gauge-title {
+		font-size: 0.72rem;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--color-text-muted);
+		text-align: center;
+	}
+
+	.gauge-track {
+		position: relative;
+		height: 14px;
+		background: var(--color-border);
+		border-radius: 7px;
+		overflow: hidden;
+	}
+
+	.gauge-fill {
+		height: 100%;
+		background: var(--color-belief);
+		border-radius: 7px;
+		transition: width 0.15s linear;
+	}
+
+	.gauge-target {
+		position: absolute;
+		top: -2px;
+		bottom: -2px;
+		width: 2px;
+		background: var(--color-surprise);
+	}
+
+	.gauge-labels {
+		position: relative;
+		display: flex;
+		justify-content: space-between;
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		color: var(--color-text-muted);
+		height: 1.2em;
+	}
+
+	.gauge-target-label {
+		position: absolute;
+		transform: translateX(-50%);
+		color: var(--color-surprise);
+		white-space: nowrap;
+	}
+
 	.math-callout {
 		padding: 0.75rem 1rem;
 		background: color-mix(in srgb, var(--color-belief) 6%, transparent);
@@ -670,7 +725,6 @@
 		}
 	}
 
-	/* ── Convergence chart ──────────────── */
 	.panel-convergence {
 		background: var(--color-surface-2, transparent);
 	}
@@ -754,7 +808,6 @@
 		position: absolute;
 		left: 3rem;
 		right: 0;
-		bottom: 63.2%; /* THEORETICAL_INCLUSION (1 - 1/e ≈ 0.632) */
 		height: 2px;
 		background: var(--color-surprise);
 		opacity: 0.6;
@@ -773,7 +826,6 @@
 
 	.conv-ref-label {
 		position: absolute;
-		bottom: 63.2%; /* THEORETICAL_INCLUSION */
 		left: 3rem;
 		transform: translateY(-100%);
 		font-family: var(--font-mono);
@@ -791,7 +843,6 @@
 		border-top: 1px solid var(--color-border);
 	}
 
-	/* ── Footer note ──────────────── */
 	.footer-note {
 		margin: 0;
 		font-size: 0.8125rem;
@@ -804,7 +855,6 @@
 		}
 	}
 
-	/* ── Responsive adjustments ──────── */
 	@media (max-width: 600px) {
 		.bootstrap-sampler {
 			padding: 0.75rem;

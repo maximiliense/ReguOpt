@@ -30,7 +30,7 @@
 	const defaultNumClassifiers = 7;
 	let numClassifiers = $state(defaultNumClassifiers);
 	const minNum = 1;
-	const maxNum = 20;
+	const maxNum = 100;
 
 	const svgW = 460,
 		svgH = 380;
@@ -683,11 +683,15 @@
 </Figure>
 
 <p class="caption-note">
-	<strong>Pédagogie :</strong> Chaque arbre CART a une profondeur maximale de 2 (au plus 3 feuilles).
-	Contrairement aux souches de décision, ces petits arbres sont suffisamment instables pour que chaque
-	bootstrap produise un arbre différent. Leur vote majoritaire crée une frontière non-linéaire en escalier
-	qui approxime bien la structure circulaire des anneaux — et la précision monte rapidement avec m (théorème
-	du jury de Condorcet, voir Exercice 5.1 du cours).
+	<strong>Pédagogie :</strong> Chaque arbre CART a une profondeur maximale de 2 (au plus 3
+	feuilles). Contrairement aux souches de décision, ces petits arbres sont suffisamment instables
+	pour que chaque bootstrap produise un arbre différent. Leur vote majoritaire crée une frontière
+	non-linéaire en escalier qui approxime bien la structure circulaire des anneaux — et la précision
+	monte rapidement avec m (théorème du jury de Condorcet, voir Exercice 5.1 du cours).
+	<br /><br />
+	<strong>Question :</strong> Dans cet exemple particulier, le gain de performance reste limité malgré
+	l'ajout de nombreux classifieurs. Pourquoi pensez-vous que l'ajout d'arbres supplémentaires n'améliore
+	pas significativement la précision ?
 </p>
 
 <style>

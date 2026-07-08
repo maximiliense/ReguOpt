@@ -6,16 +6,18 @@
 		children,
 		caption,
 		type,
-		containerWidth = $bindable(0)
+		containerWidth = $bindable(0),
+		style
 	}: {
 		children: Snippet;
 		caption?: Snippet;
 		type: schemaType;
 		containerWidth?: number;
+		style?: string;
 	} = $props();
 </script>
 
-<figure class={`${type}-wrap`}>
+<figure class={`${type}-wrap`} {style}>
 	<!--
 		Measures available width WITHOUT being affected by dynamic content.
 

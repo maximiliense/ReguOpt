@@ -230,7 +230,7 @@
 		</p>
 	</div>
 
-	<Figure type="chart">
+	<Figure type="chart" style="width:100%">
 		<CurveChart
 			{curves}
 			height={280}
