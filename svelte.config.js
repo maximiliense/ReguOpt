@@ -11,7 +11,7 @@ export default {
 		paths: {
 			// Use BASE_PATH so local builds (dev/preview) always use '' while
 			// CI sets BASE_PATH=/fep for GitHub Pages deployment.
-			base: process.env.BASE_PATH ?? '/fep'
+			base: process.env.BASE_PATH ?? '/ReguOpt'
 		}
 	}
 };

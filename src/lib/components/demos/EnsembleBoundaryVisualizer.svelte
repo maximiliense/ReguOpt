@@ -1,30 +1,37 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import Figure from '$lib/components/charts/Figure.svelte';
 	import Slider from '$lib/components/controls/Slider.svelte';
 
-	/** Data point with true class label */
 	interface DataPoint {
 		x: number;
 		y: number;
 		label: 0 | 1;
 	}
 
-	/** Weak linear classifier: h(x,y) = sign(w·x + v·y + b) */
-	interface WeakClassifier {
-		w: number;
-		v: number;
-		bias: number;
-		accuracy: number;
-		id: number;
+	// ── Depth-2 CART tree (3 leaves max) ─────────────────────────
+	interface TreeNode {
+		leaf?: boolean;
+		prediction?: 0 | 1; // majority class at this leaf
+
+		axis?: 0 | 1; // 0 = x, 1 = y
+		threshold?: number;
+		left?: TreeNode;
+		right?: TreeNode;
 	}
 
-	// ── Reactive state ────────────────────────────────────────
+	interface WeakClassifier {
+		root: TreeNode;
+		accuracy: number;
+		id: number;
+		equation: string;
+	}
+
 	const defaultNumClassifiers = 7;
 	let numClassifiers = $state(defaultNumClassifiers);
 	const minNum = 1;
 	const maxNum = 20;
 
-	// ── Plot configuration ─────────────────────────────────────
 	const svgW = 460,
 		svgH = 380;
 	const padL = 48,
@@ -37,11 +44,9 @@
 	const domainX: [number, number] = [-0.25, 1.25];
 	const domainY: [number, number] = [-0.85, 0.95];
 
-	// Grid resolution for decision boundary (40×32 ≈ 1280 cells)
 	const gridResX = 40;
 	const gridResY = 32;
 
-	// ── Pixel projection ───────────────────────────────────────
 	function px(x: number): number {
 		return padL + ((x - domainX[0]) / (domainX[1] - domainX[0])) * plotW;
 	}
@@ -49,104 +54,204 @@
 		return padT + ((domainY[1] - y) / (domainY[1] - domainY[0])) * plotH;
 	}
 
-	// ── Data: two interleaving moons ───────────────────────────
-	function generateMoonsData(n: number): DataPoint[] {
+	// Generate two noisy concentric rings centered around (0.5, 0).
+	// Inner ring = class 0 (blue), outer ring = class 1 (red).
+	function generateRingsData(n: number): DataPoint[] {
 		const pts: DataPoint[] = [];
 		const half = Math.floor(n / 2);
 
 		for (let i = 0; i < n; i++) {
-			let x: number, y: number, label: 0 | 1;
+			const angle = Math.random() * 2 * Math.PI;
+			const noise = () => (Math.random() - 0.5) * 0.08;
 			if (i < half) {
-				const angle = Math.PI * (i / (half - 1 || 1));
-				x = 0.55 * Math.cos(angle) + 0.52;
-				y = 0.55 * Math.sin(angle) - 0.1;
-				label = 0 as const;
+				pts.push({
+					x: 0.5 + 0.28 * Math.cos(angle) + noise(),
+					y: 0.28 * Math.sin(angle) + noise(),
+					label: 0 as const
+				});
 			} else {
-				const idx = i - half;
-				const angle = Math.PI * (idx / (half - 1 || 1));
-				x = 0.5 * Math.cos(Math.PI + angle) + 0.38;
-				y = 0.5 * Math.sin(Math.PI + angle) + 0.2;
-				label = 1 as const;
+				pts.push({
+					x: 0.5 + 0.58 * Math.cos(angle) + noise(),
+					y: 0.58 * Math.sin(angle) + noise(),
+					label: 1 as const
+				});
 			}
-			const noise = () => (Math.random() - 0.5) * 0.13;
-			pts.push({ x: x + noise(), y: y + noise(), label });
 		}
 		return pts;
 	}
 
-	let dataPoints = $state(generateMoonsData(90));
+	let dataPoints = $state(generateRingsData(90));
 
-	// ── Weak classifiers generation ────────────────────────────
-	function generateClassifiers(n: number): WeakClassifier[] {
-		const cls: WeakClassifier[] = [];
-		for (let i = 0; i < n; i++) {
-			const angle = Math.random() * Math.PI * 2;
-			const w = Math.cos(angle);
-			const vCoeff = Math.sin(angle);
-			const b = (Math.random() - 0.5) * 1.6;
+	// Recursively traverse a tree to classify a point.
+	function classify(node: TreeNode, x: number, y: number): 0 | 1 {
+		if (node.leaf) return node.prediction as 0 | 1;
+		const val = node.axis === 0 ? x : y;
+		return classify(val <= (node.threshold ?? 0) ? node.left! : node.right!, x, y);
+	}
 
+	// Draw a bootstrap sample (with replacement) from the dataset.
+	function bootstrap(pts: DataPoint[]): DataPoint[] {
+		const sample: DataPoint[] = [];
+		for (let i = 0; i < pts.length; i++) {
+			sample.push(pts[Math.floor(Math.random() * pts.length)]);
+		}
+		return sample;
+	}
+
+	// ── Gini impurity helper ───────────────────────────────────────
+	function gini(labels: (0 | 1)[]): number {
+		if (!labels.length) return 0;
+		const c0 = labels.filter((l) => l === 0).length;
+		const p0 = c0 / labels.length;
+		return 2 * p0 * (1 - p0);
+	}
+
+	// Find the best axis-aligned split using Gini impurity.
+	function findBestSplit(data: DataPoint[]): { axis: 0 | 1; threshold: number } | null {
+		let bestGini = Infinity;
+		let result: { axis: 0 | 1; threshold: number } | null = null;
+
+		for (const axis of [0, 1] as (0 | 1)[]) {
+			// Sort indices by the feature value
+			const sorted = [...data].sort((a, b) => (axis === 0 ? a.x : a.y) - (axis === 0 ? b.x : b.y));
+			const n = sorted.length;
+
+			// Evaluate thresholds between consecutive distinct values
+			for (let i = 1; i < n; i++) {
+				const vLeft = axis === 0 ? sorted[i - 1].x : sorted[i - 1].y;
+				const vRight = axis === 0 ? sorted[i].x : sorted[i].y;
+				if (vLeft >= vRight) continue; // skip duplicates
+				const threshold = (vLeft + vRight) / 2;
+
+				// Split data into left/right groups
+				const leftLabels: (0 | 1)[] = [];
+				const rightLabels: (0 | 1)[] = [];
+				for (const pt of sorted) {
+					const val = axis === 0 ? pt.x : pt.y;
+					if (val <= threshold) leftLabels.push(pt.label);
+					else rightLabels.push(pt.label);
+				}
+
+				// Weighted Gini of the split
+				const g =
+					(leftLabels.length * gini(leftLabels) + rightLabels.length * gini(rightLabels)) / n;
+				if (g < bestGini) {
+					bestGini = g;
+					result = { axis, threshold };
+				}
+			}
+		}
+
+		return result;
+	}
+
+	// Majority class of a group of labels.
+	function majorityClass(data: DataPoint[]): 0 | 1 {
+		const c1 = data.filter((p) => p.label === 1).length;
+		return c1 > data.length / 2 ? (1 as const) : (0 as const);
+	}
+
+	// Recursively train a CART tree up to maxDepth.
+	function trainTree(data: DataPoint[], depth: number): TreeNode {
+		// Stopping conditions: max depth reached, all same label, or too few samples
+		if (depth >= 2 || data.length < 3 || new Set(data.map((p) => p.label)).size === 1) {
+			return { leaf: true, prediction: majorityClass(data) };
+		}
+
+		const split = findBestSplit(data);
+		if (!split) return { leaf: true, prediction: majorityClass(data) };
+
+		// Partition data according to the best split
+		const leftData: DataPoint[] = [];
+		const rightData: DataPoint[] = [];
+		for (const pt of data) {
+			const val = split.axis === 0 ? pt.x : pt.y;
+			if (val <= split.threshold) leftData.push(pt);
+			else rightData.push(pt);
+		}
+
+		// Safety: if one side is empty, make this a leaf
+		if (!leftData.length || !rightData.length) {
+			return { leaf: true, prediction: majorityClass(data) };
+		}
+
+		return {
+			axis: split.axis,
+			threshold: split.threshold,
+			left: trainTree(leftData, depth + 1),
+			right: trainTree(rightData, depth + 1)
+		};
+	}
+
+	// Generate maxNum depth-2 trees via bootstrap bagging.
+	const classifierPool = $derived.by(() => {
+		const pool: WeakClassifier[] = [];
+
+		for (let i = 0; i < maxNum; i++) {
+			const sample = bootstrap(dataPoints);
+			const root = trainTree(sample, 0);
+			// Evaluate on the original dataset, not the bootstrap sample
 			let correct = 0;
 			for (const pt of dataPoints) {
-				if ((w * pt.x + vCoeff * pt.y + b >= 0 ? 1 : 0) === pt.label) correct++;
+				if (classify(root, pt.x, pt.y) === pt.label) correct++;
 			}
-			cls.push({ w, v: vCoeff, bias: b, accuracy: correct / dataPoints.length, id: i });
+			const acc = correct / dataPoints.length;
+
+			pool.push({
+				root,
+				accuracy: acc,
+				id: i,
+				equation: 'Depth 2 tree'
+			});
 		}
-		return cls.sort((a, c2) => c2.accuracy - a.accuracy); // best first
-	}
 
-	let classifiers = $state(generateClassifiers(defaultNumClassifiers));
-
-	function regenerate() {
-		dataPoints = generateMoonsData(90);
-		classifiers = generateClassifiers(numClassifiers);
-	}
-
-	// Regenerate classifiers when count changes (keep same data)
-	$effect(() => {
-		const n = numClassifiers; // read to register dependency
-		classifiers = generateClassifiers(n);
+		return pool;
 	});
 
-	// ── Prediction helpers ─────────────────────────────────────
-	function classify(c: WeakClassifier, x: number, y: number): 0 | 1 {
-		return c.w * x + c.v * y + c.bias >= 0 ? (1 as const) : (0 as const);
+	const classifiers = $derived(classifierPool.slice(0, numClassifiers));
+
+	function regenerate() {
+		stopAnim();
+		dataPoints = generateRingsData(90);
+	}
+
+	function ensemblePredictWith(cls: WeakClassifier[], x: number, y: number): 0 | 1 {
+		let votes = 0;
+		for (const c of cls) votes += classify(c.root, x, y);
+		return votes > cls.length / 2 ? (1 as const) : (0 as const);
 	}
 
 	function ensemblePredict(x: number, y: number): 0 | 1 {
-		let votes = 0;
-		for (const c of classifiers) votes += classify(c, x, y);
-		return votes > classifiers.length / 2 ? (1 as const) : (0 as const);
+		return ensemblePredictWith(classifiers, x, y);
 	}
 
-	// ── Grid cells for decision boundary background ────────────
+	const cellStepPxW = $derived(plotW / gridResX);
+	const cellStepPxH = $derived(plotH / gridResY);
+	const cellRenderPxW = $derived(cellStepPxW * 1.05);
+	const cellRenderPxH = $derived(cellStepPxH * 1.05);
+
 	const cellDataWx = $derived((domainX[1] - domainX[0]) / gridResX);
 	const cellDataWy = $derived((domainY[1] - domainY[0]) / gridResY);
 
-	// Precomputed pixel dimensions (constant)
-	const cellPxW = $derived((plotW / gridResX) * 1.05); // slight overlap to avoid gaps
-	const cellPxH = $derived((plotH / gridResY) * 1.05);
-
 	interface GridCell {
-		sx: number; // SVG pixel x (left)
-		sy: number; // SVG pixel y (top — note flipped Y axis)
+		sx: number;
+		sy: number;
 		vote: 0 | 1;
 	}
 
 	const gridCells = $derived.by(() => {
 		const cells: GridCell[] = [];
-
 		for (let iy = 0; iy < gridResY; iy++) {
-			const sy = padT + iy * cellPxH;
-
+			const sy = padT + iy * cellStepPxH;
 			for (let ix = 0; ix < gridResX; ix++) {
 				const cx = domainX[0] + (ix + 0.5) * cellDataWx;
 				const cy = domainY[0] + (iy + 0.5) * cellDataWy;
 
 				let votes1 = 0;
-				for (const c of classifiers) votes1 += classify(c, cx, cy);
+				for (const c of classifiers) votes1 += classify(c.root, cx, cy);
 
 				cells.push({
-					sx: padL + ix * cellPxW,
+					sx: padL + ix * cellStepPxW,
 					sy,
 					vote: votes1 > classifiers.length / 2 ? (1 as const) : (0 as const)
 				});
@@ -155,7 +260,6 @@
 		return cells;
 	});
 
-	// ── Boundary edges where vote changes between neighbors ────
 	interface Edge {
 		x1: number;
 		y1: number;
@@ -175,23 +279,18 @@
 				const left = getCell(ix, iy);
 				const right = getCell(ix + 1, iy);
 				const below = getCell(ix, iy + 1);
-
 				if (!left || !right || !below) continue;
 
-				// Vertical boundary (left vs right neighbor — edge runs vertically in SVG)
 				if (left.vote !== right.vote) {
-					const midX = left.sx + cellPxW / 2;
-					edges.push({ x1: midX, y1: left.sy - 3, x2: midX, y2: left.sy + cellPxH * 2 + 3 });
+					const midX = left.sx + cellStepPxW;
+					edges.push({ x1: midX, y1: left.sy - 2, x2: midX, y2: left.sy + cellStepPxH + 2 });
 				}
-
-				// Horizontal boundary (left vs below neighbor)
 				if (left.vote !== below.vote) {
-					const midY = left.sy + cellPxH / 2;
-					edges.push({ x1: left.sx - 3, y1: midY, x2: left.sx + cellPxW * 2 + 3, y2: midY });
+					const midY = left.sy + cellStepPxH;
+					edges.push({ x1: left.sx - 2, y1: midY, x2: left.sx + cellStepPxW + 2, y2: midY });
 				}
 			}
 		}
-
 		return edges;
 	});
 
@@ -225,29 +324,24 @@
 		const miniCellPxH = ((miniPlotH / miniRes) * 1.12) | 0;
 
 		return classifiers.slice(0, 8).map((c) => {
-			const equation = `sign(${c.w.toFixed(1)}x ${c.v >= 0 ? '+' : ''}${c.v.toFixed(1)}y ${c.bias >= 0 ? '+' : ''}${c.bias.toFixed(2)})`;
-
 			const cells: MiniCell[] = [];
 			for (let iy = 0; iy < miniRes; iy++) {
 				for (let ix = 0; ix < miniRes; ix++) {
 					const cx = domainX[0] + (ix + 0.5) * mWx;
 					const cy = domainY[0] + (iy + 0.5) * mWy;
-
 					cells.push({
 						sx: miniPad + ix * (miniPlotW / miniRes),
 						sy: miniPad + iy * (miniPlotH / miniRes),
 						sw: miniCellPxW,
-						sh: miniCellPxH, // reuse, slight imprecision ok for mini
-						vote: classify(c, cx, cy)
+						sh: miniCellPxH,
+						vote: classify(c.root, cx, cy)
 					});
 				}
 			}
-
-			return { ...c, equation, miniCells: cells };
+			return { ...c, miniCells: cells };
 		});
 	});
 
-	// ── Projected data points (for the main chart) ─────────────
 	interface ProjectedPoint {
 		cx: number;
 		cy: number;
@@ -257,7 +351,6 @@
 		dataPoints.map((p) => ({ cx: px(p.x), cy: py(p.y), label: p.label }) as ProjectedPoint)
 	);
 
-	// ── Axis tick data ─────────────────────────────────────────
 	const xTicks = $derived.by(() => {
 		const ticks: { val: number; px: number }[] = [];
 		for (let i = 0; i <= 4; i++) {
@@ -276,7 +369,6 @@
 		return ticks;
 	});
 
-	// ── Accuracy metrics (derived) ─────────────────────────────
 	const ensembleAccuracy = $derived.by(() => {
 		let correct = 0;
 		for (const pt of dataPoints) {
@@ -285,24 +377,74 @@
 		return correct / dataPoints.length;
 	});
 
-	const bestIndividualAccuracy = $derived(classifiers[0]?.accuracy ?? 0);
+	const bestIndividualAccuracy = $derived(
+		classifiers.length ? Math.max(...classifiers.map((c) => c.accuracy)) : 0
+	);
 	const improvement = $derived(ensembleAccuracy - bestIndividualAccuracy);
+
+	const accuracyCurve = $derived.by(() => {
+		const curve: { m: number; acc: number }[] = [];
+		for (let mm = 1; mm <= maxNum; mm++) {
+			const sub = classifierPool.slice(0, mm);
+			let correct = 0;
+			for (const pt of dataPoints) {
+				if (ensemblePredictWith(sub, pt.x, pt.y) === pt.label) correct++;
+			}
+			curve.push({ m: mm, acc: correct / dataPoints.length });
+		}
+		return curve;
+	});
+
+	const sparkW = 400;
+	const sparkH = 100;
+	const sparkPad = { l: 34, r: 10, t: 8, b: 18 };
+	function sparkX(mm: number): number {
+		return sparkPad.l + ((mm - 1) / (maxNum - 1)) * (sparkW - sparkPad.l - sparkPad.r);
+	}
+	function sparkY(acc: number): number {
+		return sparkPad.t + (1 - acc) * (sparkH - sparkPad.t - sparkPad.b);
+	}
+	const accuracyPath = $derived(
+		accuracyCurve
+			.map((p, i) => `${i === 0 ? 'M' : 'L'}${sparkX(p.m).toFixed(1)},${sparkY(p.acc).toFixed(1)}`)
+			.join(' ')
+	);
+
+	let playing = $state(false);
+	let animTimer: ReturnType<typeof setInterval> | null = null;
+	function play() {
+		if (playing) return;
+		if (numClassifiers >= maxNum) numClassifiers = minNum;
+		playing = true;
+		animTimer = setInterval(() => {
+			numClassifiers = Math.min(numClassifiers + 1, maxNum);
+			if (numClassifiers >= maxNum) stopAnim();
+		}, 300);
+	}
+	function pause() {
+		stopAnim();
+	}
+	function stopAnim() {
+		if (animTimer !== null) clearInterval(animTimer);
+		animTimer = null;
+		playing = false;
+	}
+	onDestroy(stopAnim);
 </script>
 
 <Figure type="chart">
 	<div class="ensemble-demo">
-		<!-- Header -->
 		<header class="demo-header">
-			<h2>Vote majoritaire — Méthodes ensemblistes</h2>
+			<h2>Vote majoritaire — Bagging d'arbres de décision (profondeur 2)</h2>
 			<p>
-				Chaque classifieur faible trace un simple coup linéaire. Ensemble, leur vote majoritaire
-				capture la courbure des données.
+				Chaque arbre CART de profondeur 2 est entraîné sur un échantillon bootstrap des anneaux
+				concentriques. Seul, un petit arbre ne peut pas séparer les anneaux. Ensemble, leur vote
+				majoritaire reconstruit une frontière non-linéaire nettement plus précise — car chaque arbre
+				est instable et le bagging profite pleinement de la diversité.
 			</p>
 		</header>
 
-		<!-- Visualization area -->
 		<div class="viz-grid">
-			<!-- Main chart with ensemble boundary overlay -->
 			<div class="main-plot">
 				<svg
 					viewBox={`0 0 ${svgW} ${svgH}`}
@@ -311,18 +453,16 @@
 					role="img"
 					aria-label="Frontière de décision de l'ensemble"
 				>
-					<!-- Decision boundary background grid (colored rectangles) -->
 					{#each gridCells as cell}
 						<rect
 							x={cell.sx}
 							y={cell.sy}
-							width={cellPxW}
-							height={cellPxH}
+							width={cellRenderPxW}
+							height={cellRenderPxH}
 							fill={cell.vote === 1 ? 'rgba(239,68,68,0.14)' : 'rgba(59,130,246,0.14)'}
 						/>
 					{/each}
 
-					<!-- Boundary contour edges (where vote flips between neighbors) -->
 					{#each boundaryEdges as edge}
 						<line
 							x1={edge.x1}
@@ -335,7 +475,6 @@
 						/>
 					{/each}
 
-					<!-- Data points -->
 					{#each projectedPoints as p}
 						<circle
 							cx={p.cx}
@@ -346,7 +485,6 @@
 						/>
 					{/each}
 
-					<!-- Axes -->
 					<line
 						x1={padL}
 						y1={svgH - padB + 4}
@@ -364,21 +502,18 @@
 						stroke-width="0.5"
 					/>
 
-					<!-- X-axis ticks -->
 					{#each xTicks as tick}
 						<text x={tick.px} y={svgH - 6} text-anchor="middle" class="axis-label"
 							>{tick.val.toFixed(2)}</text
 						>
 					{/each}
 
-					<!-- Y-axis ticks -->
 					{#each yTicks as tick}
 						<text x={padL - 8} y={tick.py + 4} text-anchor="end" class="axis-label"
 							>{tick.val.toFixed(2)}</text
 						>
 					{/each}
 
-					<!-- Axis labels -->
 					<text
 						x={svgW / 2}
 						y={svgH - 2}
@@ -397,13 +532,11 @@
 				</svg>
 			</div>
 
-			<!-- Individual classifier previews -->
 			<div class="side-panel">
-				<div class="panel-title">Classifieurs individuels</div>
+				<div class="panel-title">Souches actives (Top 8)</div>
 				{#each previewClassifiers as pc (pc.id)}
 					<div class="classifier-card">
 						<svg viewBox={`0 0 ${miniSvgW} ${miniSvgH}`} width={miniSvgW} height={miniSvgH}>
-							<!-- Mini decision grid -->
 							{#each pc.miniCells as cell}
 								<rect
 									x={cell.sx}
@@ -413,7 +546,6 @@
 									fill={cell.vote === 1 ? 'rgba(239,68,68,0.2)' : 'rgba(59,130,246,0.2)'}
 								/>
 							{/each}
-							<!-- Mini data points -->
 							{#each dataPoints as pt}
 								<circle
 									cx={mpx(pt.x)}
@@ -433,7 +565,6 @@
 			</div>
 		</div>
 
-		<!-- Metrics -->
 		<div class="metrics-row">
 			<div class="cell">
 				<span class="label">Classifieurs</span>
@@ -441,14 +572,14 @@
 			</div>
 			<div class="cell style-operator"></div>
 			<div class="cell">
-				<span class="label">Meilleur individuel</span>
+				<span class="label">Meilleur Stump</span>
 				<span class="value" style:color="var(--color-warn, #f59e0b)"
 					>{(bestIndividualAccuracy * 100).toFixed(0)}%</span
 				>
 			</div>
 			<div class="cell style-operator"></div>
 			<div class="cell">
-				<span class="label">Ensemble</span>
+				<span class="label">Vote majoritaire</span>
 				<span class="value" style:color="var(--color-belief)"
 					>{(ensembleAccuracy * 100).toFixed(0)}%</span
 				>
@@ -465,7 +596,6 @@
 			</div>
 		</div>
 
-		<!-- Controls -->
 		<div class="controls-panel">
 			<Slider
 				bind:value={numClassifiers}
@@ -474,30 +604,90 @@
 				step={1}
 				label="Nombre de classifieurs"
 			/>
-			<button class="action-btn" onclick={regenerate}>↻ Régénérer</button>
+			<div class="actions-row">
+				{#if playing}
+					<button class="action-btn" onclick={pause}>⏸ Pause</button>
+				{:else}
+					<button class="action-btn" onclick={play}>▶ Balayer m automatiquement</button>
+				{/if}
+				<button class="action-btn" onclick={regenerate}>↻ Régénérer</button>
+			</div>
 		</div>
 
-		<!-- Legend -->
+		<div class="spark-panel">
+			<div class="spark-title">Convergence de l'ensemble (Théorème de Condorcet)</div>
+			<svg viewBox={`0 0 ${sparkW} ${sparkH}`} width="100%" height={sparkH} role="img">
+				<line
+					x1={sparkPad.l}
+					y1={sparkH - sparkPad.b}
+					x2={sparkW - sparkPad.r}
+					y2={sparkH - sparkPad.b}
+					stroke="var(--color-border)"
+					stroke-width="1"
+				/>
+				<line
+					x1={sparkPad.l}
+					y1={sparkPad.t}
+					x2={sparkPad.l}
+					y2={sparkH - sparkPad.b}
+					stroke="var(--color-border)"
+					stroke-width="1"
+				/>
+				<line
+					x1={sparkPad.l}
+					y1={sparkY(0.5)}
+					x2={sparkW - sparkPad.r}
+					y2={sparkY(0.5)}
+					stroke="var(--color-surprise)"
+					stroke-width="1"
+					stroke-dasharray="3 3"
+					opacity="0.5"
+				/>
+				<path d={accuracyPath} fill="none" stroke="var(--color-belief)" stroke-width="2.5" />
+				{#if accuracyCurve.length}
+					{@const cur = accuracyCurve[Math.min(numClassifiers, maxNum) - 1]}
+					{#if cur}
+						<circle
+							cx={sparkX(cur.m)}
+							cy={sparkY(cur.acc)}
+							r="4"
+							fill="var(--color-belief)"
+							stroke="#fff"
+							stroke-width="1.5"
+						/>
+					{/if}
+				{/if}
+				<text
+					x={sparkPad.l - 4}
+					y={sparkH - sparkPad.b + 12}
+					font-size="9"
+					fill="var(--color-text-muted)">m=1</text
+				>
+				<text
+					x={sparkW - sparkPad.r}
+					y={sparkH - sparkPad.b + 12}
+					text-anchor="end"
+					font-size="9"
+					fill="var(--color-text-muted)">m={maxNum}</text
+				>
+			</svg>
+		</div>
+
 		<div class="legend">
-			<span><span class="swatch-dot swatch-blue"></span> Classe 0 (cercle extérieur)</span>
-			<span><span class="swatch-dot swatch-red"></span> Classe 1 (cercle intérieur)</span>
-			<span><span class="swatch-rect swatch-bluish"></span> Zone vote = classe 0</span>
-			<span><span class="swatch-rect swatch-reddish"></span> Zone vote = classe 1</span>
-			<span><span class="swatch-line"></span> Frontière de décision</span>
+			<span><span class="swatch-dot swatch-blue"></span> Classe 0</span>
+			<span><span class="swatch-dot swatch-red"></span> Classe 1</span>
+			<span><span class="swatch-rect swatch-bluish"></span> Zone majoritaire 0</span>
+			<span><span class="swatch-rect swatch-reddish"></span> Zone majoritaire 1</span>
 		</div>
 	</div>
-
-	<!--
-  Note: snippetOverlay for ScatterPlot and Figure's caption prop both accept Snippet values.
-  In Svelte 5, snippets are defined via {:snippet name()} inside render contexts.
-  For now, the pedagogical message is rendered as plain HTML below the chart.
--->
 </Figure>
 
 <p class="caption-note">
-	<strong>Pédagogie :</strong> Les classifieurs individuels sont linéaires et pauvres. Leur vote majoritaire
-	crée une frontière non-linéaire qui s'adapte à la structure des données. C'est l'intuition fondamentale
-	des méthodes ensemblistes (Random Forest, AdaBoost…).
+	<strong>Pédagogie :</strong> Chaque arbre CART a une profondeur maximale de 2 (au plus 3 feuilles).
+	Contrairement aux souches de décision, ces petits arbres sont suffisamment instables pour que chaque
+	bootstrap produise un arbre différent. Leur vote majoritaire crée une frontière non-linéaire en escalier
+	qui approxime bien la structure circulaire des anneaux — et la précision monte rapidement avec m (théorème
+	du jury de Condorcet, voir Exercice 5.1 du cours).
 </p>
 
 <style>
@@ -542,10 +732,16 @@
 	}
 
 	.side-panel {
-		width: 175px;
-		display: flex;
-		flex-direction: column;
-		gap: 0.3rem;
+		width: 100%;
+		max-width: 100%;
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
+		gap: 0.35rem;
+		align-content: start;
+	}
+
+	.panel-title {
+		grid-column: 1 / -1;
 	}
 
 	.panel-title {
@@ -595,7 +791,6 @@
 		line-height: 1.3;
 	}
 
-	/* ── Metrics row (matches Metrics.svelte styling) ─────────── */
 	.metrics-row {
 		width: 100%;
 		max-width: 620px;
@@ -641,7 +836,6 @@
 		color: var(--color-text);
 	}
 
-	/* ── Controls panel ──────────────────────────────────────── */
 	.controls-panel {
 		display: flex;
 		flex-direction: column;
@@ -652,6 +846,13 @@
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-md, 8px);
 		background: var(--color-surface-2);
+	}
+
+	.actions-row {
+		display: flex;
+		gap: 0.5rem;
+		justify-content: center;
+		flex-wrap: wrap;
 	}
 
 	.action-btn {
@@ -675,7 +876,25 @@
 		border-color: var(--color-belief);
 	}
 
-	/* ── Legend ─────────────────────────────────────────────── */
+	.spark-panel {
+		width: 100%;
+		max-width: 460px;
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+		padding: 0.6rem 0.75rem;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md, 8px);
+		background: var(--color-surface-2, transparent);
+	}
+	.spark-title {
+		font-size: 0.7rem;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		color: var(--color-text-muted);
+		text-align: center;
+	}
+
 	.legend {
 		display: flex;
 		gap: 0.7rem;
@@ -718,17 +937,6 @@
 		background: rgba(239, 68, 68, 0.3);
 	}
 
-	.swatch-line {
-		display: inline-block;
-		width: 14px;
-		height: 2px;
-		background: var(--color-text);
-		opacity: 0.5;
-		border-radius: 1px;
-		vertical-align: middle;
-		margin-right: 3px;
-	}
-
 	.axis-label {
 		fill: var(--color-text-muted);
 		font-size: 9px;
@@ -736,7 +944,7 @@
 	}
 
 	.caption-note {
-		max-width: 600px;
+		max-width: 100%;
 		text-align: center;
 		font-size: 0.78rem;
 		color: var(--color-text-muted);
@@ -745,7 +953,6 @@
 		font-style: italic;
 	}
 
-	/* ── Responsive ─────────────────────────────────────────── */
 	@media (max-width: 640px) {
 		.viz-grid {
 			flex-direction: column;
