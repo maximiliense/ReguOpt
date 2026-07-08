@@ -11,6 +11,7 @@
 	import KatexInline from '$lib/components/narrative/KatexInline.svelte';
 	import Bibliography from '$lib/components/narrative/bib/Bibliography.svelte';
 	import BibElement from '$lib/components/narrative/bib/BibElement.svelte';
+	import TableOfContents from '$lib/components/narrative/TableOfContents.svelte';
 	import VarianceReductionDemo from '$lib/components/demos/VarianceReductionDemo.svelte';
 	import EnsembleBoundaryVisualizer from '$lib/components/demos/EnsembleBoundaryVisualizer.svelte';
 	import BootstrapSampler from '$lib/components/demos/BootstrapSampler.svelte';
@@ -27,6 +28,42 @@
 	$effect(() => {
 		tracker.trackInteraction();
 	});
+
+	// ── Table of Contents ──
+
+	interface TocEntry {
+		id: string;
+		label: string;
+		description?: string;
+		color: 'epistemic' | 'positive' | 'neutral' | 'belief' | 'surprise' | 'agent';
+	}
+
+	const tocEntries: TocEntry[] = [
+		{
+			id: 'introduction',
+			label: 'Introduction aux méthodes ensemblistes',
+			description: 'Réduction de variance par agrégation de prédicteurs',
+			color: 'epistemic'
+		},
+		{
+			id: 'approche-naive',
+			label: "L'approche naïve",
+			description: 'Vote majoritaire, moyenne, conditions de succès',
+			color: 'neutral'
+		},
+		{
+			id: 'bma',
+			label: 'Bayesian Model Averaging',
+			description: 'Pondération bayésienne par vraisemblance a posteriori',
+			color: 'belief'
+		},
+		{
+			id: 'bagging',
+			label: 'Bagging (Bootstrap Aggregating)',
+			description: 'Création de diversité par échantillonnage bootstrap, erreur OOB',
+			color: 'positive'
+		}
+	];
 
 	// ── Formula variables (stored in script so Svelte never parses backslashes) ──
 
@@ -136,7 +173,9 @@
 >
 	<!-- SECTION 1: INTRODUCTION -->
 	<TheorySection>
-		<h2>Introduction aux méthodes ensemblistes</h2>
+		<TableOfContents entries={tocEntries} />
+
+		<h2 id="introduction">Introduction aux méthodes ensemblistes</h2>
 		<p>
 			La Partie I de ce cours s'est concentrée sur un seul modèle à la fois : comment garantir
 			l'existence d'un minimum (Leçon 1), quand la convexité permet de le trouver globalement (Leçon
@@ -268,7 +307,7 @@
 
 	<!-- SECTION 2: APPROCHE NAÏVE -->
 	<TheorySection>
-		<h2>L'approche naïve : combiner plusieurs modèles</h2>
+		<h2 id="approche-naive">L'approche naïve : combiner plusieurs modèles</h2>
 		<p>
 			Le Théorème 5.1 nous dit que moyenner des prédicteurs bruités réduit la variance — mais il
 			suppose que les modèles agrégés produisent des valeurs numériques continues. Formalisons
@@ -360,7 +399,7 @@
 
 	<!-- SECTION 3: BAYESIAN MODEL AVERAGING -->
 	<TheorySection>
-		<h2>Bayesian Model Averaging (BMA)</h2>
+		<h2 id="bma">Bayesian Model Averaging (BMA)</h2>
 		<p>
 			L'agrégation naïve (Section 2) donne le même poids à chaque modèle, qu'il soit excellent ou
 			médiocre. L'approche bayésienne corrige ce défaut en pondérant chaque modèle selon sa
@@ -455,7 +494,7 @@
 
 	<!-- SECTION 4: BAGGING -->
 	<TheorySection>
-		<h2>Bagging (Bootstrap Aggregating)</h2>
+		<h2 id="bagging">Bagging (Bootstrap Aggregating)</h2>
 		<p>
 			La difficulté principale avec l'agrégation naïve (Section 2) et le BMA (Section 3) est que,
 			pour une classe de modèles donnée, un même jeu d'apprentissage produit toujours la même
