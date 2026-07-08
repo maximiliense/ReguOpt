@@ -18,18 +18,20 @@
 	const chartWidth = 400,
 		chartHeight = 350;
 	const pad = 36;
-	const xDomain = [-5, 5],
-		yDomain = [-5, 5];
+	const xDomain: [number, number] = [-5, 5];
+	const yDomain: [number, number] = [-5, 5];
 
-	function projX(x) {
+	const domain: [[number, number], [number, number]] = [xDomain, yDomain];
+
+	function projX(x: number) {
 		return pad + ((x - xDomain[0]) / (xDomain[1] - xDomain[0])) * (chartWidth - pad * 2);
 	}
-	function projY(y) {
+	function projY(y: number) {
 		return pad + ((yDomain[1] - y) / (yDomain[1] - yDomain[0])) * (chartHeight - pad * 2);
 	}
 
 	// MSE landscape: elliptical bowl centered at OLS solution
-	function mse(w1, w2) {
+	function mse(w1: number, w2: number) {
 		const dw1 = w1 - olsW1,
 			dw2 = w2 - olsW2;
 		return (dw1 * dw1 + 0.6 * dw1 * dw2 + dw2 * dw2) / 2;
@@ -46,40 +48,47 @@
 				? { x: Math.sign(olsW1) * r, y: 0 }
 				: { x: 0, y: Math.sign(olsW2) * r };
 		} else {
-			const l1Part = constraintRadius * l1Ratio;
-			const l2Part = constraintRadius * (1 - l1Ratio);
-			const t = l2Part / Math.sqrt(olsW1 * olsW1 + olsW2 * olsW2);
-			return { x: olsW1 * t, y: olsW2 * t };
+			const l1Sol =
+				Math.abs(olsW1) > Math.abs(olsW2)
+					? { x: Math.sign(olsW1) * constraintRadius, y: 0 }
+					: { x: 0, y: Math.sign(olsW2) * constraintRadius };
+			const t = constraintRadius / Math.sqrt(olsW1 * olsW1 + olsW2 * olsW2);
+			const l2Sol = { x: olsW1 * t, y: olsW2 * t };
+			return {
+				x: l1Ratio * l1Sol.x + (1 - l1Ratio) * l2Sol.x,
+				y: l1Ratio * l1Sol.y + (1 - l1Ratio) * l2Sol.y
+			};
 		}
 	});
 
-	// Constraint shape SVG path in canvas coordinates
-	const constraintPath = $derived.by(() => {
-		if (penaltyType === 'l2') {
-			const rPx = (constraintRadius / (xDomain[1] - xDomain[0])) * (chartWidth - pad * 2);
-			return `<circle cx="${projX(0)}" cy="${projY(0)}" r="${rPx}" fill="none" stroke="#f59e0b" stroke-width="3"/>`;
-		} else if (penaltyType === 'l1') {
-			const pts = [
-				`${projX(0)},${projY(constraintRadius)}`,
-				`${projX(constraintRadius)},${projY(0)}`,
-				`${projX(0)},${projY(-constraintRadius)}`,
-				`${projX(-constraintRadius)},${projY(0)}`
-			];
-			return `<polygon points="${pts.join(' ')}" fill="none" stroke="#f59e0b" stroke-width="3"/>`;
-		} else {
-			const r = constraintRadius;
-			const alpha = l1Ratio;
-			const pts = Array.from({ length: 20 }, (_, i) => {
-				const angle = (2 * Math.PI * i) / 20;
-				const cosA = Math.cos(angle),
-					sinA = Math.sin(angle);
-				const l1Norm = Math.abs(cosA) + Math.abs(sinA);
-				const scale =
-					r / (alpha * l1Norm + (1 - alpha) * Math.sqrt(cosA * cosA + sinA * sinA) || 1e-10);
-				return `${projX(scale * cosA)},${projY(scale * sinA)}`;
-			});
-			return `<polygon points="${pts.join(' ')}" fill="none" stroke="#f59e0b" stroke-width="3"/>`;
-		}
+	// Constraint shape dimensions for SVG rendering
+	const constraintRadiusPx = $derived(
+		(constraintRadius / (xDomain[1] - xDomain[0])) * (chartWidth - pad * 2)
+	);
+
+	const l1Points = $derived.by(() => {
+		const pts = [
+			`${projX(0)},${projY(constraintRadius)}`,
+			`${projX(constraintRadius)},${projY(0)}`,
+			`${projX(0)},${projY(-constraintRadius)}`,
+			`${projX(-constraintRadius)},${projY(0)}`
+		];
+		return pts.join(' ');
+	});
+
+	const elasticNetPoints = $derived.by(() => {
+		const r = constraintRadius;
+		const alpha = l1Ratio;
+		const pts = Array.from({ length: 20 }, (_, i) => {
+			const angle = (2 * Math.PI * i) / 20;
+			const cosA = Math.cos(angle),
+				sinA = Math.sin(angle);
+			const l1Norm = Math.abs(cosA) + Math.abs(sinA);
+			const scale =
+				r / (alpha * l1Norm + (1 - alpha) * Math.sqrt(cosA * cosA + sinA * sinA) || 1e-10);
+			return `${projX(scale * cosA)},${projY(scale * sinA)}`;
+		});
+		return pts.join(' ');
 	});
 
 	// Markers for the plot
@@ -90,12 +99,12 @@
 
 	// Penalty type labels for toggle buttons
 	const types = [
-		{ key: 'l2', label: 'Ridge (L2)' },
-		{ key: 'l1', label: 'Lasso (L1)' },
-		{ key: 'elastic-net', label: 'Elastic Net' }
+		{ key: 'l2' as const, label: 'Ridge (L2)' },
+		{ key: 'l1' as const, label: 'Lasso (L1)' },
+		{ key: 'elastic-net' as const, label: 'Elastic Net' }
 	];
 
-	function setType(t) {
+	function setType(t: 'l1' | 'l2' | 'elastic-net') {
 		penaltyType = t;
 	}
 </script>
@@ -105,18 +114,31 @@
 		<Figure type="chart" containerWidth={400}>
 			<ContourPlot
 				f={mse}
-				domain={[xDomain, yDomain]}
-				{chartWidth}
-				{chartHeight}
+				{domain}
+				width={chartWidth}
+				height={chartHeight}
 				numLevels={12}
 				showAxes={true}
-				markers={[{ x: olsW1, y: olsW2 }]}
+				{markers}
 			/>
 		</Figure>
 
 		<!-- SVG overlay for constraint shape -->
 		<svg class="overlay" width={chartWidth} height={chartHeight}>
-			{@html constraintPath}
+			{#if penaltyType === 'l2'}
+				<circle
+					cx={projX(0)}
+					cy={projY(0)}
+					r={constraintRadiusPx}
+					fill="none"
+					stroke="#f59e0b"
+					stroke-width="3"
+				/>
+			{:else if penaltyType === 'l1'}
+				<polygon points={l1Points} fill="none" stroke="#f59e0b" stroke-width="3" />
+			{:else}
+				<polygon points={elasticNetPoints} fill="none" stroke="#f59e0b" stroke-width="3" />
+			{/if}
 
 			<!-- OLS marker (red) -->
 			<circle

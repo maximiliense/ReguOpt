@@ -28,6 +28,7 @@
 			points: [number, number][];
 			stroke?: string;
 			strokeWidth?: number;
+			strokeDasharray?: string;
 			opacity?: number;
 			fill?: string;
 			fillOpacity?: number;
