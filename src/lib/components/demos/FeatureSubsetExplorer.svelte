@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import Figure from '$lib/components/charts/Figure.svelte';
 	import HeatmapGrid from '$lib/components/charts/HeatmapGrid.svelte';
 	import LineChart from '$lib/components/charts/LineChart.svelte';
@@ -7,12 +8,10 @@
 	import Button from '$lib/components/controls/Button.svelte';
 	import { buildDecisionStump } from '$lib/math/random-forest';
 
-	// ─── Constants ──────────────────────────────────────────────
 	const N_TRAIN = 300;
 	const N_TEST = 200;
-	const BOOTSTRAP_SAMPLES = 60; // per m value
+	const BOOTSTRAP_SAMPLES = 60;
 
-	// ─── Seeded RNG (Lehmer / MINSTD) ──────────────────────────
 	function makeRng(seed: number): () => number {
 		let s = ((seed % 2147483647) + 2147483647) % 2147483647 || 1;
 		return () => {
@@ -35,20 +34,13 @@
 		}
 	}
 
-	// ─── Synthetic data generation with correlated features ─────
 	function generateSyntheticData(d: number, seed: number) {
 		const rng = makeRng(seed);
 		const n = N_TRAIN + N_TEST;
 
-		// Generate d independent base features ~N(0,1)
 		const Z: number[][] = Array.from({ length: n }, () =>
 			Array.from({ length: d }, () => randn(rng))
 		);
-
-		// Create correlations by mixing:
-		// Features 0 & 1 highly correlated (rho ≈ 0.85)
-		// Features 2 & 3 moderately correlated (rho ≈ 0.6)
-		// Rest stay independent
 		const X = Z.map((row) => [...row]);
 
 		if (d >= 2) {
@@ -56,13 +48,11 @@
 				X[i][1] = 0.85 * Z[i][0] + Math.sqrt(1 - 0.85 ** 2) * randn(rng);
 			}
 		}
-
 		if (d >= 4) {
 			for (let i = 0; i < n; i++) {
 				X[i][3] = 0.6 * Z[i][2] + Math.sqrt(1 - 0.6 ** 2) * randn(rng);
 			}
 		}
-
 		if (d >= 5 && d % 2 === 1) {
 			const a = d - 2,
 				b = d - 1;
@@ -71,15 +61,17 @@
 			}
 		}
 
-		// Target: binary, depends only on features 0 and 2 (irrelevant noise in others)
+		// FIX: use the seeded rng, not Math.random() — every other random
+		// quantity in this file is derived from `seed`, but the target labels
+		// previously weren't, breaking reproducibility of "the same seed gives
+		// the same dataset" that the rest of the component relies on.
 		const y = Array.from({ length: n }, (_, i) => {
 			const score = X[i][0] + 0.8 * X[i][2];
-			return Math.random() < 1 / (1 + Math.exp(-score)) ? 1 : 0;
+			const p = 1 / (1 + Math.exp(-score));
+			return rng() < p ? 1 : 0;
 		});
 
-		// Compute correlation matrix for the d features
 		const corrMatrix: number[][] = Array.from({ length: d }, () => Array(d).fill(0));
-
 		for (let a = 0; a < d; a++) {
 			for (let b = a; b < d; b++) {
 				let sumXY = 0,
@@ -87,7 +79,6 @@
 					sumY2 = 0;
 				const meanA = X.reduce((s, row) => s + row[a], 0) / n;
 				const meanB = X.reduce((s, row) => s + row[b], 0) / n;
-
 				for (let i = 0; i < n; i++) {
 					const da = X[i][a] - meanA;
 					const db = X[i][b] - meanB;
@@ -95,9 +86,11 @@
 					sumX2 += da * da;
 					sumY2 += db * db;
 				}
-
 				const denom = Math.sqrt(sumX2 * sumY2);
-				corrMatrix[a][b] = denom > 0 ? sumXY / denom : 1;
+				// FIX: fall back to 0 (undefined correlation), not 1 (perfect
+				// correlation) — the old fallback silently implied a relationship
+				// that doesn't exist whenever variance happened to be zero.
+				corrMatrix[a][b] = denom > 0 ? sumXY / denom : 0;
 				if (a !== b) corrMatrix[b][a] = corrMatrix[a][b];
 			}
 			corrMatrix[a][a] = 1.0;
@@ -106,40 +99,72 @@
 		return { X, y, corrMatrix };
 	}
 
-	// ─── Simulation: error curves vs m ──────────────────────
-	function simulate(d: number, X: number[][], y: number[]) {
+	// ── State ──────────────────────────────────────────────
+	const dFeaturesInitial = 8;
+	let dFeatures = $state(dFeaturesInitial);
+	let dataSeed = $state(0);
+
+	const D_MIN = 4;
+	const D_MAX = 20;
+
+	// Cheap: only builds X/y/corrMatrix (O(n·d²) at worst, ~200k ops for d=20) —
+	// safe to keep fully reactive, recomputes fine on every slider tick.
+	const allData = $derived(generateSyntheticData(dFeatures, dataSeed * 7919 + 42));
+
+	// ── FIX: the expensive part (up to 1200 decision-stump fits) is no longer
+	// a synchronous $derived recomputed on every slider tick. It's now:
+	//   1. Debounced — only actually runs ~150ms after dFeatures/dataSeed stop
+	//      changing, so mid-drag values never trigger a full computation.
+	//   2. Chunked — one value of m per macrotask (setTimeout), so the browser
+	//      can repaint and stay responsive between chunks instead of blocking
+	//      for the entire simulation in one synchronous call.
+	//   3. Cancellable — a run-id guard means a superseded run (e.g. the user
+	//      moved the slider again before the previous run finished) stops
+	//      cleanly instead of corrupting the results with stale data. ──
+	let trainErrors = $state<number[]>([]);
+	let testErrors = $state<number[]>([]);
+	let simTargetD = $state(dFeaturesInitial);
+	let simProgress = $state(0);
+	let simulating = $state(false);
+
+	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+	let runId = 0;
+
+	function runSimulation() {
+		const myRunId = ++runId;
+		const d = dFeatures;
+		const { X, y } = allData;
+
 		const trainX = X.slice(0, N_TRAIN);
 		const trainY = y.slice(0, N_TRAIN);
 		const testX = X.slice(N_TRAIN);
 		const testY = y.slice(N_TRAIN);
 
-		const trainErrors: number[] = [];
-		const testErrors: number[] = [];
+		trainErrors = [];
+		testErrors = [];
+		simTargetD = d;
+		simProgress = 0;
+		simulating = true;
 
-		for (let mVal = 1; mVal <= d; mVal++) {
+		function computeForM(mVal: number) {
 			let totalTrainErr = 0,
 				totalTestErr = 0;
 
 			for (let b = 0; b < BOOTSTRAP_SAMPLES; b++) {
 				const rng = makeRng(b * 9973 + mVal * 104729);
 
-				// Bootstrap sample indices for training data
 				const bootIndices: number[] = Array.from({ length: N_TRAIN }, () =>
 					Math.floor(rng() * N_TRAIN)
 				);
-
 				const bootX = bootIndices.map((i) => trainX[i]);
 				const bootY = bootIndices.map((i) => trainY[i]);
 
-				// Random feature subset of size mVal from d features
 				const allFeatures = Array.from({ length: d }, (_, i) => i);
 				shuffle(allFeatures, rng);
-				const selectedFeatures = allFeatures.slice(0, Math.min(mVal, d));
+				const selectedFeatures = allFeatures.slice(0, mVal);
 
-				// Build stump on bootstrap sample with feature subset
 				const stump = buildDecisionStump(bootX, bootY, selectedFeatures, true);
 
-				// Evaluate predictions (classification: round the mean label)
 				const predictSample = (sx: number[][], sy: number[]): number => {
 					let correct = 0;
 					for (let i = 0; i < sx.length; i++) {
@@ -149,46 +174,63 @@
 								: Math.round(stump.rightValue);
 						if (pred === sy[i]) correct++;
 					}
-					return 1 - correct / sx.length; // error rate
+					return 1 - correct / sx.length;
 				};
 
 				totalTrainErr += predictSample(bootX, bootY);
-				totalTestErr += predictSample(testX.slice(0, N_TEST), testY.slice(0, N_TEST));
+				totalTestErr += predictSample(testX, testY);
 			}
 
-			trainErrors.push(totalTrainErr / BOOTSTRAP_SAMPLES);
-			testErrors.push(totalTestErr / BOOTSTRAP_SAMPLES);
+			return {
+				trainErr: totalTrainErr / BOOTSTRAP_SAMPLES,
+				testErr: totalTestErr / BOOTSTRAP_SAMPLES
+			};
 		}
 
-		return { trainErrors, testErrors };
+		function stepM(mVal: number) {
+			if (myRunId !== runId) return; // superseded by a newer run — stop silently
+			if (mVal > d) {
+				simulating = false;
+				return;
+			}
+			const { trainErr, testErr } = computeForM(mVal);
+			trainErrors = [...trainErrors, trainErr];
+			testErrors = [...testErrors, testErr];
+			simProgress = mVal;
+			setTimeout(() => stepM(mVal + 1), 0);
+		}
+
+		stepM(1);
 	}
 
-	// ─── State ──────────────────────────────────────────────
-	let dFeatures = $state(8); // total features (4–20)
-	let dataSeed = $state(0);
+	function scheduleSimulation() {
+		if (debounceTimer !== null) clearTimeout(debounceTimer);
+		debounceTimer = setTimeout(runSimulation, 150);
+	}
 
-	const D_MIN = 4;
-	const D_MAX = 20;
-
-	// ─── Derived: dataset & simulation results ─────────────
-	const allData = $derived(generateSyntheticData(dFeatures, dataSeed * 7919 + 42));
-
-	const simResults = $derived.by(() => {
-		return simulate(dFeatures, allData.X, allData.y);
+	$effect(() => {
+		void dFeatures;
+		void dataSeed;
+		scheduleSimulation();
 	});
 
-	// ─── Derived: optimal m (lowest test error) & metrics ──
+	onDestroy(() => {
+		if (debounceTimer !== null) clearTimeout(debounceTimer);
+		runId++; // invalidate any in-flight run
+	});
+
+	// ── Derived metrics (guarded for partial/empty results while simulating) ──
 	const optimalM = $derived.by(() => {
+		if (testErrors.length === 0) return 1;
 		let bestIdx = 0;
-		for (let i = 1; i < simResults.testErrors.length; i++) {
-			if (simResults.testErrors[i] < simResults.testErrors[bestIdx]) bestIdx = i;
+		for (let i = 1; i < testErrors.length; i++) {
+			if (testErrors[i] < testErrors[bestIdx]) bestIdx = i;
 		}
-		return bestIdx + 1; // 1-indexed
+		return bestIdx + 1;
 	});
 
 	const sqrtD = $derived(Math.round(Math.sqrt(dFeatures)));
 
-	// Average off-diagonal correlation strength (absolute value)
 	const avgCorrelation = $derived.by(() => {
 		let sumAbs = 0,
 			count = 0;
@@ -202,31 +244,20 @@
 	});
 
 	const biasVarianceGap = $derived(
-		simResults.testErrors[0] - simResults.trainErrors[0] // gap at m=1
+		testErrors.length > 0 && trainErrors.length > 0 ? testErrors[0] - trainErrors[0] : 0
 	);
 
-	// ─── Derived: LineChart series ──────────────────────
 	const lineSeries = $derived.by(() => [
-		{
-			values: simResults.trainErrors,
-			color: 'var(--color-belief)',
-			label: `Erreur train`
-		},
-		{
-			values: simResults.testErrors,
-			color: 'var(--color-surprise)',
-			label: `Erreur test`
-		}
+		{ values: trainErrors, color: 'var(--color-belief)', label: 'Erreur train' },
+		{ values: testErrors, color: 'var(--color-surprise)', label: 'Erreur test' }
 	]);
 
-	// ─── Controls ──────────────────────────────────────
 	function regenerate() {
 		dataSeed += 1;
 	}
 </script>
 
 <div class="demo-wrap">
-	<!-- Header -->
 	<div class="header">
 		<h2>Exploration de la taille du sous-ensemble de features (m)</h2>
 		<p class="subtitle">
@@ -235,20 +266,16 @@
 		</p>
 	</div>
 
-	<!-- Charts: Heatmap + LineChart side by side -->
 	<div class="charts-row">
-		<!-- Correlation heatmap (small, square) -->
 		<div class="heatmap-figure">
 			<Figure type="chart">
 				<HeatmapGrid data={allData.corrMatrix} colorScale="rose" showValues={dFeatures <= 10} />
-
 				{#snippet caption()}
 					Matrice de corrélation entre les {dFeatures} features (|ρ̄| = {avgCorrelation.toFixed(2)})
 				{/snippet}
 			</Figure>
 		</div>
 
-		<!-- Error curve line chart -->
 		<div class="linechart-figure">
 			<Figure type="chart">
 				<LineChart
@@ -258,16 +285,27 @@
 					width={320}
 					height={240}
 				/>
-
 				{#snippet caption()}
-					Erreur moyenne sur {BOOTSTRAP_SAMPLES} stumps bootstrap par valeur de m | Optimum empirique
-					: m = {optimalM}
+					{#if simulating}
+						Calcul en cours… m = {simProgress}/{simTargetD}
+					{:else}
+						Erreur moyenne sur {BOOTSTRAP_SAMPLES} stumps bootstrap par valeur de m | Optimum empirique
+						: m = {optimalM}
+					{/if}
 				{/snippet}
 			</Figure>
 		</div>
 	</div>
 
-	<!-- Metrics Panel -->
+	{#if simulating}
+		<div class="progress-bar">
+			<div
+				class="progress-fill"
+				style:width="{(simProgress / Math.max(1, simTargetD)) * 100}%"
+			></div>
+		</div>
+	{/if}
+
 	<Metrics align="center">
 		<div class="cell">
 			<span class="label">m optimal (empirique)</span>
@@ -284,7 +322,7 @@
 		<div class="cell">
 			<span class="label">Erreur test @ m optimal</span>
 			<span class="value" style:color="var(--color-surprise)"
-				>{(simResults.testErrors[optimalM - 1] * 100).toFixed(1)}%</span
+				>{testErrors.length ? (testErrors[optimalM - 1] * 100).toFixed(1) : '—'}%</span
 			>
 			<span class="unit">sur {N_TEST} échantillons</span>
 		</div>
@@ -304,7 +342,6 @@
 		</div>
 	</Metrics>
 
-	<!-- Controls -->
 	<div class="controls-panel">
 		<Slider
 			bind:value={dFeatures}
@@ -322,7 +359,6 @@
 		</div>
 	</div>
 
-	<!-- Insight box -->
 	<div class="insight-box">
 		<span class="icon">🔍</span>
 		<p>
@@ -332,7 +368,7 @@
 			>) crée de la diversité entre arbres. C'est pourquoi le Random Forest utilise typiquement
 			<strong>m ≈ √d = {sqrtD}</strong> : c'est un bon compromis qui évite à la fois l'oubli des features
 			importantes (m trop petit) et le bruit introduit par les features inutiles (m = d). L'erreur test
-			forme souvent une courbe en U inversé.
+			forme souvent une courbe en U inversé — regardez-la se construire point par point ci-dessus.
 		</p>
 	</div>
 </div>
@@ -368,7 +404,6 @@
 		color: var(--color-text-muted);
 	}
 
-	/* ─── Two-column chart layout ──────────────────────── */
 	.charts-row {
 		display: flex;
 		flex-direction: row;
@@ -384,7 +419,6 @@
 		min-width: 140px;
 	}
 
-	/* Make heatmap figure compact */
 	.heatmap-figure :global(figure) {
 		margin: 0;
 	}
@@ -393,13 +427,25 @@
 		flex: 1;
 		min-width: 0;
 
-		/* Make line chart figure compact */
 		:global(figure) {
 			margin: 0;
 		}
 	}
 
-	/* ─── Controls panel ────────────────────────────── */
+	.progress-bar {
+		width: 100%;
+		max-width: 720px;
+		height: 4px;
+		background: var(--color-surface-2);
+		border-radius: 2px;
+		overflow: hidden;
+	}
+	.progress-fill {
+		height: 100%;
+		background: var(--color-belief);
+		transition: width 0.1s linear;
+	}
+
 	.controls-panel {
 		display: flex;
 		flex-direction: column;
@@ -426,7 +472,6 @@
 		margin-left: auto;
 	}
 
-	/* ─── Insight box ────────────────────────────── */
 	.insight-box {
 		display: flex;
 		gap: 0.5rem;

@@ -283,7 +283,7 @@
 	</div>
 
 	<!-- Main visualization: scatter plot + ensemble regions -->
-	<Figure type="chart">
+	<Figure type="chart" style="width:100%">
 		<svg
 			viewBox={`0 0 ${SVG_W} ${SVG_H}`}
 			class="forest-svg"
