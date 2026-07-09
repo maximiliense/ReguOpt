@@ -23,12 +23,24 @@
 
 		const oob: number[] = [],
 			test: number[] = [];
-		let sum = 0;
+
+		const baselineError = 0.15;
+
+		// We introduce a seed-based global shift so the baseline error itself
+		// changes completely with every regeneration.
+		const seedShift = gauss() * 0.04;
+
 		for (let k = 1; k <= m; k++) {
-			const e = Math.max(0.05, Math.min(0.8, 0.38 + gauss() * 0.12));
-			sum += e;
-			test.push(sum / k);
-			oob.push(test[k - 1] + ((gauss() * 0.12) / Math.sqrt(k)) * 0.6);
+			// Test error curve with a unique high-variance wobble per seed
+			const testWobble = gauss() * (0.04 / Math.sqrt(k));
+			const currentTest = baselineError + seedShift + 0.2 / Math.sqrt(k) + testWobble;
+			test.push(Math.max(0.02, currentTest));
+
+			// OOB error with high initial instability that completely alters its path
+			// depending on the seed's random sequence
+			const oobNoise = gauss() * (0.28 / Math.sqrt(k));
+			const currentOOB = currentTest + oobNoise + 0.08 / k;
+			oob.push(Math.max(0.02, currentOOB));
 		}
 		return { oob, test };
 	});
@@ -60,7 +72,7 @@
 	);
 
 	function regenerate() {
-		seed = Date.now();
+		seed = Math.floor(Math.random() * 1_000_000);
 	}
 </script>
 

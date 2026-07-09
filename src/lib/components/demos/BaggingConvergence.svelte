@@ -140,16 +140,17 @@
 			font-size="10"
 			font-family="var(--font-sans)">Number of models (M)</text
 		>
-		<text
-			x={12}
-			y={(pad.t + H - pad.b) / 2}
-			text-anchor="middle"
-			dominant-baseline="middle"
-			transform={`rotate(-90, 12, ${(pad.t + H - pad.b) / 2}`}
-			fill="var(--color-text-muted)"
-			font-size="10"
-			font-family="var(--font-sans)">RMSE</text
-		>
+		<g transform={`rotate(-90, ${pad.l - 32}, ${(pad.t + H - pad.b) / 2})`}>
+			<text
+				x={pad.l - 32}
+				y={(pad.t + H - pad.b) / 2}
+				text-anchor="middle"
+				dominant-baseline="middle"
+				fill="var(--color-text-muted)"
+				font-size="10"
+				font-family="var(--font-sans)">RMSE</text
+			>
+		</g>
 	</svg>
 
 	<div class="controls">
