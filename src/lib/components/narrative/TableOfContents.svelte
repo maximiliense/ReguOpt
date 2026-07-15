@@ -1,14 +1,14 @@
 <script lang="ts">
-	interface Entry {
+	export interface TocEntry {
 		id: string;
 		label: string;
 		description?: string;
 		color: 'epistemic' | 'positive' | 'neutral' | 'belief' | 'surprise' | 'agent';
 	}
 
-	let { entries, title = 'Sommaire' }: { entries: Entry[]; title?: string } = $props();
+	let { entries, title = 'Sommaire' }: { entries: TocEntry[]; title?: string } = $props();
 
-	const colorMap: Record<Entry['color'], string> = {
+	const colorMap: Record<TocEntry['color'], string> = {
 		epistemic: '--color-epistemic',
 		positive: '--color-positive',
 		neutral: '--color-neutral',

@@ -420,9 +420,9 @@
 		</ExampleBlock>
 	</TheorySection>
 
-	<InteractiveSection tag="Exploration des sous-ensembles">
+	<!-- <InteractiveSection tag="Exploration des sous-ensembles">
 		<DeferredDemo load={() => import('$lib/components/demos/FeatureSubsetExplorer.svelte')} />
-	</InteractiveSection>
+	</InteractiveSection> -->
 
 	<!-- ═══════════════════════════════════════════════ -->
 	<!-- Section 4 : Importance des features -->

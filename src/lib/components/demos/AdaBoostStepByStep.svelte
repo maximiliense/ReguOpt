@@ -4,12 +4,10 @@
 	import Button from '$lib/components/controls/Button.svelte';
 	import { runAdaBoostWithHistory, evaluateAdaboostBoundary } from '$lib/math/boosting.js';
 
-	// ─── Constants ──────────────────────────────────────
 	const N_SAMPLES = 80;
 	const DEFAULT_MAX_ITER = 20;
-	const GRID_RES = 32; // square-ish cells for boundary visualization
+	const GRID_RES = 32;
 
-	// SVG dimensions
 	const SVG_W = 460;
 	const SVG_H = 380;
 	const PAD_L = 48,
@@ -19,16 +17,14 @@
 	const PLOT_W = SVG_W - PAD_L - PAD_R;
 	const PLOT_H = SVG_H - PAD_T - PAD_B;
 
-	// Data domain (matches moons dataset range)
 	const DOMAIN_X: [number, number] = [-1.5, 2.5];
 	const DOMAIN_Y: [number, number] = [-1.5, 1.5];
 
-	// ─── Seeded RNG (Lehmer / MINSTD) ──────────────────
 	function makeRng(seed: number): () => number {
 		let s = ((seed % 2147483647) + 2147483647) % 2147483647 || 1;
 		return () => {
 			s = (s * 16807) % 2147483647;
-			return (s - 1) / 2147483646; // [0, 1)
+			return (s - 1) / 2147483646;
 		};
 	}
 
@@ -39,18 +35,15 @@
 		return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
 	}
 
-	// ─── Data generation: two interleaving moons ────────
 	function generateMoons(n: number, seed: number): { X: number[][]; y: number[] } {
 		const rng = makeRng(seed + 42);
 		const half = Math.floor(n / 2);
-
 		const X: number[][] = [];
 		const y: number[] = [];
 
 		for (let i = 0; i < n; i++) {
 			let x: number[], label: number;
 			if (i < half) {
-				// Upper moon — label +1
 				const angle = Math.PI * (i / (half - 1 || 1));
 				x = [
 					0.9 * Math.cos(angle) + 0.45 + randn(rng) * 0.13,
@@ -58,7 +51,6 @@
 				];
 				label = 1;
 			} else {
-				// Lower moon — label −1
 				const idx = i - half;
 				const angle = Math.PI * (idx / (half - 1 || 1));
 				x = [
@@ -70,43 +62,35 @@
 			X.push(x);
 			y.push(label);
 		}
-
 		return { X, y };
 	}
 
-	// ─── State ──────────────────────────────────────────
 	let dataSeed = $state(0);
 	let currentStep = $state(0);
 	let maxIterations = $state(DEFAULT_MAX_ITER);
 	let isPlaying = $state(false);
 
-	// ─── Derived: dataset ──────────────────────────────
 	const data = $derived(generateMoons(N_SAMPLES, dataSeed));
 
-	// ─── Derived: AdaBoost training history ────────────
 	const history = $derived.by(() => {
 		return runAdaBoostWithHistory(data.X, data.y, maxIterations);
 	});
 
 	const numModels = $derived(history.models.length);
 
-	// Clamp currentStep when model count changes
 	$effect(() => {
 		if (currentStep > numModels) {
 			currentStep = Math.max(0, numModels);
 		}
 	});
 
-	// ─── Derived: active models up to current step ─────
 	const activeModels = $derived(history.models.slice(0, currentStep));
 
-	// ─── Derived: sample weights at current step ──────
 	const currentWeights = $derived.by(() => {
 		if (history.weightsPerStep.length === 0) return new Array(N_SAMPLES).fill(1 / N_SAMPLES);
 		return history.weightsPerStep[Math.min(currentStep, history.weightsPerStep.length - 1)];
 	});
 
-	// ─── SVG projection helpers ────────────────────────
 	function projX(v: number): number {
 		return PAD_L + ((v - DOMAIN_X[0]) / (DOMAIN_X[1] - DOMAIN_X[0])) * PLOT_W;
 	}
@@ -114,14 +98,12 @@
 		return PAD_T + ((DOMAIN_Y[1] - v) / (DOMAIN_Y[1] - DOMAIN_Y[0])) * PLOT_H;
 	}
 
-	// ─── Derived: grid cells for decision boundary ──────
 	interface GridCellData {
 		sx: number;
 		sy: number;
 		pred: number;
 		margin: number;
 	}
-
 	interface GridData {
 		cells: GridCellData[];
 		cellW: number;
@@ -132,33 +114,25 @@
 		if (activeModels.length === 0) return { cells: [], cellW: 0, cellH: 0 };
 
 		const boundary = evaluateAdaboostBoundary(activeModels, DOMAIN_X, DOMAIN_Y, GRID_RES);
-
-		// Build uniform data-space grid coordinates
 		const dx = (DOMAIN_X[1] - DOMAIN_X[0]) / GRID_RES;
 		const dy = (DOMAIN_Y[1] - DOMAIN_Y[0]) / GRID_RES;
 
-		// Precompute pixel dimensions from projection of first two points
 		const cellW = projX(DOMAIN_X[0] + dx) - projX(DOMAIN_X[0]);
-		const cellH = projY(DOMAIN_Y[0]) - projY(DOMAIN_Y[0] + dy); // positive due to Y flip
+		const cellH = projY(DOMAIN_Y[0]) - projY(DOMAIN_Y[0] + dy);
 
 		const cells: GridCellData[] = [];
-
 		for (let iy = 0; iy < GRID_RES; iy++) {
 			const sy = projY(DOMAIN_Y[0] + (iy + 1) * dy);
-
 			for (let ix = 0; ix < GRID_RES; ix++) {
 				const sx = projX(DOMAIN_X[0] + ix * dx);
 				const pred = boundary.predictions[iy]?.[ix] ?? 0;
 				const margin = boundary.margins[iy]?.[ix] ?? 0;
-
 				cells.push({ sx, sy, pred, margin });
 			}
 		}
-
 		return { cells, cellW, cellH };
 	});
 
-	// ─── Derived: boundary contour edges ──────────────
 	interface BoundaryEdgeData {
 		x1: number;
 		y1: number;
@@ -185,15 +159,12 @@
 				const rightPred = getPred(ix + 1, iy);
 				const belowPred = getPred(ix, iy + 1);
 
-				// Vertical boundary (between columns)
 				if (leftPred !== rightPred && leftPred !== 0 && rightPred !== 0) {
 					const midX = gc.cells[iy * GRID_RES + ix].sx + cellW / 2;
 					const topY = gc.cells[iy * GRID_RES + ix].sy - 1;
 					const botY = topY + cellH + 2;
 					edges.push({ x1: midX, y1: topY, x2: midX, y2: botY });
 				}
-
-				// Horizontal boundary (between rows)
 				if (leftPred !== belowPred && leftPred !== 0 && belowPred !== 0) {
 					const midY = gc.cells[iy * GRID_RES + ix].sy + cellH / 2;
 					const leftX = gc.cells[iy * GRID_RES + ix].sx - 1;
@@ -202,19 +173,15 @@
 				}
 			}
 		}
-
 		return edges;
 	});
 
-	// ─── Derived: current stump decision line ──────────
 	const stumpLine = $derived.by(() => {
 		if (currentStep < 1) return null;
-
 		const stump = history.models[currentStep - 1].stump;
 		if (!stump) return null;
 
 		if (stump.featureIdx === 0) {
-			// Vertical split on x feature
 			return {
 				x1: projX(stump.threshold),
 				y1: PAD_T,
@@ -222,29 +189,21 @@
 				y2: SVG_H - PAD_B
 			};
 		} else {
-			// Horizontal split on y feature
 			const sy = projY(stump.threshold);
-			return {
-				x1: PAD_L,
-				y1: sy,
-				x2: SVG_W - PAD_R,
-				y2: sy
-			};
+			return { x1: PAD_L, y1: sy, x2: SVG_W - PAD_R, y2: sy };
 		}
 	});
 
-	// ─── Derived: projected data points with weight sizing ──
 	const projectedPoints = $derived.by(() => {
 		const maxW = Math.max(...currentWeights, 1 / N_SAMPLES);
 		return data.X.map((x, i) => ({
 			cx: projX(x[0]),
 			cy: projY(x[1]),
 			label: data.y[i],
-			r: 2.5 + (currentWeights[i] / maxW) * 5.5 // radius scales from ~2.5 to ~8
+			r: 2.5 + (currentWeights[i] / maxW) * 5.5
 		}));
 	});
 
-	// ─── Derived: axis tick marks ──────────────────────
 	const xTicks = $derived.by(() => {
 		const ticks: { val: number; px: number }[] = [];
 		for (let i = 0; i <= 4; i++) {
@@ -263,7 +222,6 @@
 		return ticks;
 	});
 
-	// ─── Metrics at current step ──────────────────────
 	const currentError = $derived(currentStep >= 1 ? history.errors[currentStep - 1] : null);
 	const currentAlpha = $derived(currentStep >= 1 ? history.alphas[currentStep - 1] : null);
 
@@ -274,7 +232,6 @@
 
 	const ensembleAccuracy = $derived((1 - cumulativeError) * 100);
 
-	// ─── Stump description for side panel ──────────────
 	const stumpDescription = $derived.by(() => {
 		if (currentStep < 1) return 'Aucune itération';
 		const s = history.models[currentStep - 1].stump;
@@ -282,31 +239,23 @@
 		return `${featureName} ≤ ${s.threshold.toFixed(2)} → classe ${s.leftValue > 0 ? '+1' : '−1'}`;
 	});
 
-	// ─── Controls ──────────────────────────────────────
 	function stepForward() {
 		if (currentStep < numModels) currentStep++;
 	}
-
 	function stepBackward() {
 		if (currentStep > 0) currentStep--;
 	}
-
 	function reset() {
 		currentStep = 0;
 		isPlaying = false;
 	}
-
 	function togglePlay() {
-		if (currentStep >= numModels) {
-			currentStep = 0;
-		}
+		if (currentStep >= numModels) currentStep = 0;
 		isPlaying = !isPlaying;
 	}
 
-	// Auto-play animation loop
 	$effect(() => {
 		if (!isPlaying) return;
-
 		const interval = setInterval(() => {
 			if (currentStep >= numModels) {
 				isPlaying = false;
@@ -314,13 +263,11 @@
 				currentStep++;
 			}
 		}, 900);
-
 		return () => clearInterval(interval);
 	});
 
-	// Reset play state and step when data is regenerated
 	$effect(() => {
-		const s = dataSeed; // register dependency
+		const s = dataSeed;
 		void s;
 		isPlaying = false;
 		currentStep = 0;
@@ -333,18 +280,16 @@
 
 <Figure type="chart">
 	<div class="adaboost-demo">
-		<!-- Header -->
 		<header class="demo-header">
-			<h2>AdaBoost — Apprentissage par renforcement progressif</h2>
+			<span class="eyebrow">Ensembles séquentiels</span>
+			<h2>AdaBoost — apprentissage par renforcement progressif</h2>
 			<p>
 				Chaque stump faible ajuste son coup selon les poids d'erreur. L'agrégat pondéré affine la
 				frontière de décision itération après itération.
 			</p>
 		</header>
 
-		<!-- Visualization area -->
 		<div class="viz-grid">
-			<!-- Main chart with decision boundary and data points -->
 			<div class="main-plot">
 				<svg
 					viewBox={`0 0 ${SVG_W} ${SVG_H}`}
@@ -353,7 +298,19 @@
 					role="img"
 					aria-label="Frontière de décision AdaBoost pas à pas"
 				>
-					<!-- Background grid cells colored by ensemble prediction -->
+					<defs>
+						<linearGradient id="plot-bg" x1="0" y1="0" x2="0" y2="1">
+							<stop offset="0%" stop-color="var(--color-surface-2, #14151c)" stop-opacity="0.5" />
+							<stop
+								offset="100%"
+								stop-color="var(--color-surface-2, #14151c)"
+								stop-opacity="0.15"
+							/>
+						</linearGradient>
+					</defs>
+
+					<rect x={PAD_L} y={PAD_T} width={PLOT_W} height={PLOT_H} fill="url(#plot-bg)" rx="6" />
+
 					{#if gridCells.cells && gridCells.cells.length > 0}
 						{#each gridCells.cells as cell}
 							<rect
@@ -362,34 +319,21 @@
 								width={gridCells.cellW}
 								height={gridCells.cellH}
 								fill={cell.pred === 1
-									? 'rgba(59,130,246,0.18)'
+									? 'rgba(96,165,250,0.16)'
 									: cell.pred === -1
-										? 'rgba(239,68,68,0.18)'
+										? 'rgba(251,113,133,0.16)'
 										: 'transparent'}
 							/>
 						{/each}
 
-						<!-- Ensemble decision boundary edges -->
 						{#each boundaryEdges as edge}
-							<line
-								x1={edge.x1}
-								y1={edge.y1}
-								x2={edge.x2}
-								y2={edge.y2}
-								stroke="var(--color-epistemic, #A78BFA)"
-								stroke-width="0.9"
-								opacity="0.45"
-							/>
+							<line x1={edge.x1} y1={edge.y1} x2={edge.x2} y2={edge.y2} class="boundary-edge" />
 						{/each}
 					{/if}
 
-					<!-- Current stump decision line (animated dash) -->
 					{#if stumpLine}
 						<line
 							class="stump-line"
-							stroke="#f59e0b"
-							stroke-width="2.5"
-							stroke-dasharray="6 4"
 							x1={stumpLine.x1}
 							y1={stumpLine.y1}
 							x2={stumpLine.x2}
@@ -397,190 +341,158 @@
 						/>
 					{/if}
 
-					<!-- Data points — size reflects weight, color reflects true label -->
 					{#each projectedPoints as p}
 						<circle
 							cx={p.cx}
 							cy={p.cy}
 							r={p.r}
-							fill={p.label === 1 ? 'var(--color-belief)' : 'var(--color-surprise)'}
-							stroke="rgba(255,255,255,0.6)"
-							stroke-width="0.8"
-							opacity="0.88"
+							class="data-dot"
+							class:dot-pos={p.label === 1}
+							class:dot-neg={p.label === -1}
 						/>
 					{/each}
 
-					<!-- Axes -->
-					<line
-						x1={PAD_L}
-						y1={SVG_H - PAD_B + 4}
-						x2={SVG_W - PAD_R}
-						y2={SVG_H - PAD_B + 4}
-						stroke="var(--color-border)"
-						stroke-width="0.5"
-					/>
-					<line
-						x1={PAD_L}
-						y1={PAD_T - 4}
-						x2={PAD_L}
-						y2={SVG_H - PAD_B + 4}
-						stroke="var(--color-border)"
-						stroke-width="0.5"
-					/>
+					<rect x={PAD_L} y={PAD_T} width={PLOT_W} height={PLOT_H} fill="none" class="plot-frame" />
 
-					<!-- X-axis tick labels -->
 					{#each xTicks as tick}
 						<text x={tick.px} y={SVG_H - 6} text-anchor="middle" class="axis-label"
 							>{tick.val.toFixed(1)}</text
 						>
 					{/each}
-
-					<!-- Y-axis tick labels -->
 					{#each yTicks as tick}
 						<text x={PAD_L - 8} y={tick.py + 4} text-anchor="end" class="axis-label"
 							>{tick.val.toFixed(1)}</text
 						>
 					{/each}
 
-					<!-- Axis labels -->
-					<text
-						x={SVG_W / 2}
-						y={SVG_H - 2}
-						text-anchor="middle"
-						font-size="10"
-						fill="var(--color-text-muted)">x₁</text
-					>
+					<text x={SVG_W / 2} y={SVG_H - 2} text-anchor="middle" class="axis-title">x₁</text>
 					<text
 						x={12}
 						y={SVG_H / 2}
 						text-anchor="middle"
-						font-size="10"
-						fill="var(--color-text-muted)"
+						class="axis-title"
 						transform={`rotate(-90, 12, ${SVG_H / 2})`}>x₂</text
 					>
 				</svg>
 			</div>
+		</div>
 
-			<!-- Side panel: iteration metrics -->
+		<div class="bottom-row">
+			<div class="controls-panel">
+				<Slider bind:value={currentStep} min={0} max={numModels} step={1} label="Étape" />
+
+				<div class="button-row">
+					<Button variant="ghost" size="sm" onclick={reset}>⟲ Reset</Button>
+					<Button
+						variant="ghost"
+						size="sm"
+						onclick={stepBackward}
+						disabled={currentStep <= 0 || numModels === 0}>← Préc.</Button
+					>
+					<Button variant="primary" size="sm" onclick={togglePlay} disabled={numModels === 0}>
+						{isPlaying ? '⏸ Pause' : '▶ Lecture'}
+					</Button>
+					<Button
+						variant="ghost"
+						size="sm"
+						onclick={stepForward}
+						disabled={currentStep >= numModels || numModels === 0}>Suiv. →</Button
+					>
+				</div>
+
+				<Slider
+					bind:value={maxIterations}
+					min={1}
+					max={40}
+					step={1}
+					label="Nombre maximum d'itérations"
+				/>
+
+				<div class="button-row">
+					<Button variant="outline" size="sm" onclick={regenerate}>↻ Régénérer les données</Button>
+				</div>
+			</div>
+
 			<div class="side-panel">
 				<div class="panel-title">Métriques de l'itération</div>
 
-				<!-- Iteration card -->
-				<div class="metric-card">
+				<div class="metric-card metric-hero">
 					<span class="metric-label">Itération</span>
-					<span class="metric-value metric-step">{currentStep}</span>
-					<span class="metric-subtext">/ {numModels} stumps</span>
+					<span class="metric-value metric-step"
+						>{currentStep}<span class="metric-of">/{numModels}</span></span
+					>
 				</div>
 
-				<!-- Weighted error card -->
-				<div class="metric-card">
-					<span class="metric-label">Erreur εₜ pondérée</span>
-					{#if currentError !== null}
-						<span
-							class="metric-value"
-							style:color={currentError < 0.5 ? 'var(--color-positive)' : 'var(--color-surprise)'}
-							>{(currentError * 100).toFixed(1)}%</span
-						>
-					{:else}
-						<span class="metric-value metric-empty">—</span>
-					{/if}
+				<div class="metric-row">
+					<div class="metric-card">
+						<span class="metric-label">Erreur εₜ</span>
+						{#if currentError !== null}
+							<span
+								class="metric-value"
+								class:good={currentError < 0.5}
+								class:bad={currentError >= 0.5}
+							>
+								{(currentError * 100).toFixed(1)}%
+							</span>
+						{:else}
+							<span class="metric-value metric-empty">—</span>
+						{/if}
+					</div>
+
+					<div class="metric-card">
+						<span class="metric-label">Poids αₜ</span>
+						{#if currentAlpha !== null}
+							<span class="metric-value metric-alpha">{currentAlpha.toFixed(3)}</span>
+						{:else}
+							<span class="metric-value metric-empty">—</span>
+						{/if}
+					</div>
 				</div>
 
-				<!-- Model weight card -->
-				<div class="metric-card">
-					<span class="metric-label">Poids αₜ du modèle</span>
-					{#if currentAlpha !== null}
-						<span class="metric-value metric-alpha">{currentAlpha.toFixed(4)}</span>
-						<span class="metric-formula">= ½ ln((1−εₜ)/εₜ)</span>
-					{:else}
-						<span class="metric-value metric-empty">—</span>
-					{/if}
-				</div>
-
-				<!-- Cumulative error card -->
 				<div class="metric-card">
 					<span class="metric-label">Erreur globale</span>
 					{#if currentStep > 0}
 						<span
 							class="metric-value"
-							style:color={cumulativeError === 0
-								? 'var(--color-positive)'
-								: cumulativeError < 0.2
-									? 'var(--color-belief)'
-									: 'var(--color-surprise)'}>{(cumulativeError * 100).toFixed(1)}%</span
+							class:good={cumulativeError === 0}
+							class:mid={cumulativeError > 0 && cumulativeError < 0.2}
+							class:bad={cumulativeError >= 0.2}
 						>
+							{(cumulativeError * 100).toFixed(1)}%
+						</span>
 					{:else}
 						<span class="metric-value metric-empty">—</span>
 					{/if}
 				</div>
 
-				<!-- Ensemble accuracy card -->
 				<div class="metric-card metric-accent">
 					<span class="metric-label">Précision de l'ensemble</span>
-					<span class="metric-value" style:color="var(--color-belief)"
-						>{ensembleAccuracy.toFixed(1)}%</span
-					>
+					<div class="accuracy-track">
+						<div class="accuracy-fill" style:width="{ensembleAccuracy}%"></div>
+					</div>
+					<span class="metric-value accent-value">{ensembleAccuracy.toFixed(1)}%</span>
 				</div>
 
-				<!-- Current stump description -->
 				<div class="stump-info">
-					<span class="stump-label">Stump t={currentStep > 0 ? currentStep : '—'}</span>
+					<span class="stump-label">Stump t = {currentStep > 0 ? currentStep : '—'}</span>
 					<span class="stump-eq">{stumpDescription}</span>
 				</div>
 			</div>
 		</div>
 
-		<!-- Controls -->
-		<div class="controls-panel">
-			<Slider bind:value={currentStep} min={0} max={numModels} step={1} label="Étape" />
-
-			<div class="button-row">
-				<Button variant="ghost" size="sm" onclick={reset}>⟲ Reset</Button>
-				<Button
-					variant="ghost"
-					size="sm"
-					onclick={stepBackward}
-					disabled={currentStep <= 0 || numModels === 0}>← Préc.</Button
-				>
-				<Button variant="primary" size="sm" onclick={togglePlay} disabled={numModels === 0}>
-					{isPlaying ? '⏸ Pause' : '▶ Lecture'}
-				</Button>
-				<Button
-					variant="ghost"
-					size="sm"
-					onclick={stepForward}
-					disabled={currentStep >= numModels || numModels === 0}>Suiv. →</Button
-				>
-			</div>
-
-			<Slider
-				bind:value={maxIterations}
-				min={1}
-				max={40}
-				step={1}
-				label="Nombre maximum d'itérations"
-			/>
-
-			<div class="button-row">
-				<Button variant="outline" size="sm" onclick={regenerate}>↻ Régénérer les données</Button>
-			</div>
-		</div>
-
-		<!-- Legend -->
 		<div class="legend">
-			<span><span class="swatch-dot swatch-blue"></span> Classe +1 (lune supérieure)</span>
-			<span><span class="swatch-dot swatch-red"></span> Classe −1 (lune inférieure)</span>
+			<span><span class="swatch-dot swatch-pos"></span> Classe +1</span>
+			<span><span class="swatch-dot swatch-neg"></span> Classe −1</span>
 			<span><span class="swatch-rect swatch-bluish"></span> Zone prédite +1</span>
 			<span><span class="swatch-rect swatch-reddish"></span> Zone prédite −1</span>
 			<span><span class="swatch-line stump-swatch"></span> Stump courant hₜ(x)</span>
 			<span><span class="swatch-line boundary-swatch"></span> Frontière agrégée</span>
 		</div>
 
-		<!-- Caption -->
 		<p class="caption-note">
-			<strong>Pédagogie :</strong> Les points grossissent quand leur poids wᵢ augmente — c'est-à-dire
-			que le modèle « se concentre » sur les exemples difficiles. Les stumps successifs (ligne orange
-			pointillée) affinent progressivement la frontière bleue de l'ensemble pondéré.
+			<strong>Pédagogie :</strong> Les points grossissent quand leur poids wᵢ augmente — le modèle « se
+			concentre » sur les exemples difficiles. Les stumps successifs (ligne pointillée) affinent progressivement
+			la frontière de l'ensemble pondéré.
 		</p>
 	</div>
 </Figure>
@@ -589,148 +501,98 @@
 	.adaboost-demo {
 		display: flex;
 		flex-direction: column;
-		gap: 0.75rem;
+		gap: 1rem;
 		align-items: center;
-		padding: 0.25rem;
+		padding: 0.5rem;
 	}
 
 	.demo-header {
 		text-align: center;
 		max-width: 600px;
+		display: flex;
+		flex-direction: column;
+		gap: 0.3rem;
+	}
+
+	.eyebrow {
+		font-size: 0.68rem;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.09em;
+		color: var(--color-belief);
+		opacity: 0.85;
 	}
 
 	.demo-header h2 {
-		font-size: 1.1rem;
-		margin-bottom: 0.2rem;
+		font-size: 1.2rem;
+		margin: 0;
 		color: var(--color-text);
+		font-weight: 700;
+		letter-spacing: -0.01em;
 	}
 
 	.demo-header p {
-		font-size: 0.82rem;
+		font-size: 0.83rem;
 		color: var(--color-text-muted);
-		line-height: 1.45;
+		line-height: 1.5;
+		margin: 0;
 	}
 
-	/* ─── Visualization grid ───────────────────────────── */
 	.viz-grid {
 		display: flex;
 		flex-direction: row;
-		gap: 0.75rem;
-		align-items: stretch;
+		gap: 1rem;
+		justify-content: center;
 		width: 100%;
-		max-width: 680px;
+		max-width: 700px;
+	}
+
+	.main-plot {
+		border-radius: 12px;
+		overflow: hidden;
+		border: 1px solid var(--color-border);
+		background: var(--color-surface, transparent);
 	}
 
 	.main-plot svg {
 		max-width: 480px;
 		width: 100%;
 		user-select: none;
+		display: block;
 	}
 
-	/* ─── Side panel ────────────────────────────────────── */
-	.side-panel {
-		min-width: 165px;
-		max-width: 200px;
-		display: flex;
-		flex-direction: column;
-		gap: 0.35rem;
+	.plot-frame {
+		stroke: var(--color-border);
+		stroke-width: 1;
+		opacity: 0.6;
 	}
 
-	.panel-title {
-		font-size: 0.68rem;
-		text-transform: uppercase;
-		letter-spacing: 0.07em;
-		color: var(--color-text-muted);
-		padding-left: 4px;
-		margin-bottom: 0.15rem;
+	.boundary-edge {
+		stroke: var(--color-epistemic, #a78bfa);
+		stroke-width: 1;
+		opacity: 0.5;
 	}
 
-	.metric-card {
-		background: var(--color-surface, transparent);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-sm, 4px);
-		padding: 0.45rem 0.55rem;
-		display: flex;
-		flex-direction: column;
-		gap: 0.15rem;
+	.data-dot {
+		stroke: rgba(255, 255, 255, 0.75);
+		stroke-width: 0.9;
+		opacity: 0.92;
+		transition: r 0.25s ease;
+	}
+	.data-dot.dot-pos {
+		fill: #60a5fa;
+	}
+	.data-dot.dot-neg {
+		fill: #fb7185;
 	}
 
-	.metric-card.metric-accent {
-		border-color: var(--color-belief);
-		background: color-mix(in srgb, var(--color-belief) 6%, transparent);
-	}
-
-	.metric-label {
-		font-size: 0.62rem;
-		color: var(--color-text-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
-		font-family: var(--font-mono, monospace);
-	}
-
-	.metric-value {
-		font-family: var(--font-mono, monospace);
-		font-size: 1.2rem;
-		font-weight: 700;
-		color: var(--color-text);
-		line-height: 1.1;
-	}
-
-	.metric-value.metric-empty {
-		color: var(--color-text-muted);
-		opacity: 0.4;
-	}
-
-	.metric-value.metric-step {
-		font-size: 1.5rem;
-		color: var(--color-belief);
-	}
-
-	.metric-subtext {
-		font-size: 0.62rem;
-		color: var(--color-text-muted);
-		font-family: var(--font-mono, monospace);
-	}
-
-	.metric-formula {
-		font-size: 0.58rem;
-		color: var(--color-text-muted);
-		font-family: var(--font-mono, monospace);
-		opacity: 0.7;
-	}
-
-	.stump-info {
-		background: color-mix(in srgb, #f59e0b 8%, transparent);
-		border: 1px solid rgba(245, 158, 11, 0.3);
-		border-radius: var(--radius-sm, 4px);
-		padding: 0.4rem 0.5rem;
-		display: flex;
-		flex-direction: column;
-		gap: 0.12rem;
-	}
-
-	.stump-label {
-		font-size: 0.6rem;
-		color: #b45309;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		font-family: var(--font-mono, monospace);
-	}
-
-	.stump-eq {
-		font-size: 0.72rem;
-		color: #92400e;
-		font-family: var(--font-mono, monospace);
-		line-height: 1.35;
-	}
-
-	/* ─── Stump line animation ──────────────────────────── */
 	.stump-line {
-		stroke: #f59e0b;
-		stroke-width: 2;
+		stroke: #fbbf24;
+		stroke-width: 2.5;
 		stroke-dasharray: 6 4;
+		filter: drop-shadow(0 0 4px rgba(251, 191, 36, 0.5));
 		animation:
-			stump-march 1s linear infinite,
+			stump-march 1.1s linear infinite,
 			stump-blink 2.5s ease-in-out infinite;
 	}
 
@@ -739,79 +601,235 @@
 			stroke-dashoffset: -20;
 		}
 	}
-
 	@keyframes stump-blink {
 		0%,
 		100% {
 			opacity: 1;
 		}
 		50% {
-			opacity: 0.5;
+			opacity: 0.55;
 		}
 	}
 
-	/* ─── Controls panel ──────────────────────────────── */
+	.axis-label {
+		fill: var(--color-text-muted);
+		font-size: 9px;
+		font-family: var(--font-mono, monospace);
+	}
+	.axis-title {
+		font-size: 10px;
+		fill: var(--color-text-muted);
+		font-weight: 600;
+	}
+
+	/* ─── Bottom row container ────────────────────────── */
+	.bottom-row {
+		display: flex;
+		flex-direction: row;
+		gap: 1rem;
+		align-items: stretch;
+		width: 100%;
+		max-width: 700px;
+	}
+
+	/* ─── Side panel ────────────────────────────────────── */
+	.side-panel {
+		min-width: 190px;
+		max-width: 220px;
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.panel-title {
+		font-size: 0.66rem;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		font-weight: 700;
+		color: var(--color-text-muted);
+		padding-left: 2px;
+	}
+
+	.metric-row {
+		display: flex;
+		gap: 0.5rem;
+	}
+	.metric-row .metric-card {
+		flex: 1;
+	}
+
+	.metric-card {
+		background: var(--color-surface, transparent);
+		border: 1px solid var(--color-border);
+		border-radius: 10px;
+		padding: 0.55rem 0.7rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+		transition: border-color 0.2s ease;
+	}
+
+	.metric-card.metric-hero {
+		background: linear-gradient(
+			135deg,
+			color-mix(in srgb, var(--color-belief) 14%, transparent),
+			transparent
+		);
+		border-color: color-mix(in srgb, var(--color-belief) 35%, var(--color-border));
+	}
+
+	.metric-card.metric-accent {
+		border-color: color-mix(in srgb, var(--color-positive, #34d399) 40%, var(--color-border));
+		background: color-mix(in srgb, var(--color-positive, #34d399) 7%, transparent);
+	}
+
+	.metric-label {
+		font-size: 0.63rem;
+		color: var(--color-text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		font-weight: 600;
+	}
+
+	.metric-value {
+		font-family: var(--font-mono, monospace);
+		font-size: 1.15rem;
+		font-weight: 700;
+		color: var(--color-text);
+		line-height: 1.15;
+	}
+
+	.metric-value.metric-empty {
+		color: var(--color-text-muted);
+		opacity: 0.35;
+	}
+	.metric-value.good {
+		color: #34d399;
+	}
+	.metric-value.mid {
+		color: #60a5fa;
+	}
+	.metric-value.bad {
+		color: #fb7185;
+	}
+
+	.metric-value.metric-step {
+		font-size: 1.7rem;
+		color: var(--color-belief);
+	}
+	.metric-of {
+		font-size: 0.95rem;
+		color: var(--color-text-muted);
+		font-weight: 500;
+	}
+
+	.metric-value.metric-alpha {
+		color: #fbbf24;
+	}
+
+	.accuracy-track {
+		height: 5px;
+		border-radius: 3px;
+		background: var(--color-border);
+		overflow: hidden;
+		margin: 0.15rem 0 0.1rem;
+	}
+	.accuracy-fill {
+		height: 100%;
+		border-radius: 3px;
+		background: linear-gradient(90deg, #34d399, #60a5fa);
+		transition: width 0.4s ease;
+	}
+	.accent-value {
+		color: #34d399;
+	}
+
+	.stump-info {
+		background: linear-gradient(135deg, rgba(251, 191, 36, 0.1), transparent);
+		border: 1px solid rgba(251, 191, 36, 0.3);
+		border-radius: 10px;
+		padding: 0.5rem 0.65rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.15rem;
+	}
+
+	.stump-label {
+		font-size: 0.6rem;
+		color: #d97706;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		font-weight: 700;
+	}
+
+	.stump-eq {
+		font-size: 0.76rem;
+		color: #b45309;
+		font-family: var(--font-mono, monospace);
+		line-height: 1.4;
+	}
+
+	/* ─── Controls ──────────────────────────────────────── */
 	.controls-panel {
 		display: flex;
 		flex-direction: column;
-		gap: 0.6rem;
-		width: 100%;
-		max-width: 420px;
-		padding: 0.75rem;
+		gap: 0.7rem;
+		flex: 1;
+		padding: 0.9rem;
 		border: 1px solid var(--color-border);
-		border-radius: var(--radius-md, 8px);
+		border-radius: 14px;
 		background: var(--color-surface-2);
 	}
 
 	.button-row {
 		display: flex;
-		gap: 0.35rem;
+		gap: 0.4rem;
 		flex-wrap: wrap;
 		justify-content: center;
-		padding: 0.15rem 0;
+		padding: 0.1rem 0;
 	}
 
 	/* ─── Legend ─────────────────────────────────────── */
 	.legend {
 		display: flex;
-		gap: 0.7rem;
-		font-size: 0.7rem;
+		gap: 0.9rem;
+		font-size: 0.71rem;
 		color: var(--color-text-muted);
 		flex-wrap: wrap;
 		justify-content: center;
-		padding-bottom: 0.25rem;
+		padding: 0.5rem 0.75rem;
+		border-radius: 10px;
+		background: var(--color-surface-2, transparent);
 	}
 
 	.swatch-dot {
 		display: inline-block;
-		width: 10px;
-		height: 10px;
+		width: 9px;
+		height: 9px;
 		border-radius: 50%;
 		vertical-align: middle;
-		margin-right: 3px;
+		margin-right: 4px;
 	}
-
-	.swatch-blue {
-		background: var(--color-belief);
+	.swatch-pos {
+		background: #60a5fa;
 	}
-	.swatch-red {
-		background: var(--color-surprise);
+	.swatch-neg {
+		background: #fb7185;
 	}
 
 	.swatch-rect {
 		display: inline-block;
 		width: 12px;
 		height: 10px;
-		border-radius: 2px;
+		border-radius: 3px;
 		vertical-align: middle;
-		margin-right: 3px;
+		margin-right: 4px;
 	}
-
 	.swatch-bluish {
-		background: rgba(59, 130, 246, 0.3);
+		background: rgba(96, 165, 250, 0.3);
 	}
 	.swatch-reddish {
-		background: rgba(239, 68, 68, 0.3);
+		background: rgba(251, 113, 133, 0.3);
 	}
 
 	.swatch-line {
@@ -820,65 +838,44 @@
 		height: 2px;
 		border-radius: 1px;
 		vertical-align: middle;
-		margin-right: 3px;
+		margin-right: 4px;
 	}
-
 	.stump-swatch {
-		background: #f59e0b;
+		background: #fbbf24;
 		height: 2.5px;
 	}
-
 	.boundary-swatch {
 		background: var(--color-epistemic, #a78bfa);
 		opacity: 0.6;
 	}
 
-	.axis-label {
-		fill: var(--color-text-muted);
-		font-size: 9px;
-		font-family: var(--font-mono, monospace);
-	}
-
 	.caption-note {
 		max-width: 620px;
 		text-align: center;
-		font-size: 0.78rem;
+		font-size: 0.79rem;
 		color: var(--color-text-muted);
-		line-height: 1.5;
-		padding: 0.25rem 0.5rem 0;
+		line-height: 1.55;
+		padding: 0;
 		font-style: italic;
 	}
 
-	/* ─── Responsive ─────────────────────────────────── */
 	@media (max-width: 640px) {
-		.viz-grid {
+		.bottom-row {
 			flex-direction: column;
 			align-items: center;
+			gap: 0.7rem;
 		}
-
 		.side-panel {
 			width: 100%;
-			max-width: 420px;
-			min-width: auto;
-			flex-direction: row;
-			flex-wrap: wrap;
-		}
-
-		.metric-card {
-			flex: 1;
-			min-width: 100px;
-		}
-
-		.stump-info {
-			width: 100%;
-		}
-
-		.controls-panel {
 			max-width: 100%;
+			min-width: auto;
 		}
-
-		.button-row {
-			justify-content: center;
+		.metric-row {
+			flex-direction: row;
+		}
+		.controls-panel {
+			width: 100%;
+			max-width: 100%;
 		}
 	}
 </style>

@@ -5,19 +5,13 @@
 	import KatexInline from '$lib/components/narrative/KatexInline.svelte';
 	import { getPageByPath, getNextPage, getPrevPage } from '$lib/navigation.js';
 	import KatexBlock from '$lib/components/narrative/KatexBlock.svelte';
-	import TableOfContents from '$lib/components/narrative/TableOfContents.svelte';
+	import TableOfContents, { type TocEntry } from '$lib/components/narrative/TableOfContents.svelte';
 
 	const meta = getPageByPath('/part1/exercices');
 	const prevMeta = $derived(getPrevPage(meta?.index ?? 0));
 	const nextMeta = $derived(getNextPage(meta?.index ?? 0));
 
 	// ── Table of Contents ──
-	interface TocEntry {
-		id: string;
-		label: string;
-		description?: string;
-		color: 'epistemic' | 'positive' | 'neutral' | 'belief' | 'surprise' | 'agent';
-	}
 
 	const tocEntries: TocEntry[] = [
 		{

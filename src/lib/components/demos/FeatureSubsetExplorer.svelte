@@ -61,14 +61,21 @@
 			}
 		}
 
-		// FIX: use the seeded rng, not Math.random() — every other random
-		// quantity in this file is derived from `seed`, but the target labels
-		// previously weren't, breaking reproducibility of "the same seed gives
-		// the same dataset" that the rest of the component relies on.
 		const y = Array.from({ length: n }, (_, i) => {
 			const score = X[i][0] + 0.8 * X[i][2];
 			const p = 1 / (1 + Math.exp(-score));
 			return rng() < p ? 1 : 0;
+		});
+
+		// FIX: precompute each feature's mean ONCE, outside the pairwise loop.
+		// The previous version recomputed meanA via a fresh O(n) reduce on
+		// EVERY (a,b) pair sharing the same a — for d=20 that's roughly 100k
+		// wasted reduce operations per dataset generation, purely from
+		// redundant recomputation of a value that only depends on `a`.
+		const means = Array.from({ length: d }, (_, k) => {
+			let s = 0;
+			for (let i = 0; i < n; i++) s += X[i][k];
+			return s / n;
 		});
 
 		const corrMatrix: number[][] = Array.from({ length: d }, () => Array(d).fill(0));
@@ -77,8 +84,8 @@
 				let sumXY = 0,
 					sumX2 = 0,
 					sumY2 = 0;
-				const meanA = X.reduce((s, row) => s + row[a], 0) / n;
-				const meanB = X.reduce((s, row) => s + row[b], 0) / n;
+				const meanA = means[a];
+				const meanB = means[b];
 				for (let i = 0; i < n; i++) {
 					const da = X[i][a] - meanA;
 					const db = X[i][b] - meanB;
@@ -87,9 +94,6 @@
 					sumY2 += db * db;
 				}
 				const denom = Math.sqrt(sumX2 * sumY2);
-				// FIX: fall back to 0 (undefined correlation), not 1 (perfect
-				// correlation) — the old fallback silently implied a relationship
-				// that doesn't exist whenever variance happened to be zero.
 				corrMatrix[a][b] = denom > 0 ? sumXY / denom : 0;
 				if (a !== b) corrMatrix[b][a] = corrMatrix[a][b];
 			}
@@ -100,39 +104,48 @@
 	}
 
 	// ── State ──────────────────────────────────────────────
-	const dFeaturesInitial = 8;
-	let dFeatures = $state(dFeaturesInitial);
+	// FIX (the main lag source): `dFeatures` now drives ONLY the slider's
+	// displayed value, updating live and cheaply on every drag tick.
+	// `committedD` is the value actually used to build the dataset AND run
+	// the simulation — it only updates ~150ms after the slider stops moving.
+	// The old version computed the O(d²·n) correlation matrix directly from
+	// the live slider value, so EVERY drag tick triggered a full, expensive
+	// dataset rebuild — this is what made dragging feel laggy even after the
+	// simulation itself was debounced.
+	let dFeatures = $state(8);
+	const committedDInitial = 8;
+	let committedD = $state(committedDInitial);
 	let dataSeed = $state(0);
 
 	const D_MIN = 4;
 	const D_MAX = 20;
 
-	// Cheap: only builds X/y/corrMatrix (O(n·d²) at worst, ~200k ops for d=20) —
-	// safe to keep fully reactive, recomputes fine on every slider tick.
-	const allData = $derived(generateSyntheticData(dFeatures, dataSeed * 7919 + 42));
+	const pendingChange = $derived(dFeatures !== committedD);
 
-	// ── FIX: the expensive part (up to 1200 decision-stump fits) is no longer
-	// a synchronous $derived recomputed on every slider tick. It's now:
-	//   1. Debounced — only actually runs ~150ms after dFeatures/dataSeed stop
-	//      changing, so mid-drag values never trigger a full computation.
-	//   2. Chunked — one value of m per macrotask (setTimeout), so the browser
-	//      can repaint and stay responsive between chunks instead of blocking
-	//      for the entire simulation in one synchronous call.
-	//   3. Cancellable — a run-id guard means a superseded run (e.g. the user
-	//      moved the slider again before the previous run finished) stops
-	//      cleanly instead of corrupting the results with stale data. ──
+	let commitTimer: ReturnType<typeof setTimeout> | null = null;
+	$effect(() => {
+		void dFeatures;
+		if (commitTimer !== null) clearTimeout(commitTimer);
+		commitTimer = setTimeout(() => {
+			committedD = dFeatures;
+		}, 150);
+	});
+
+	// Only recomputed when committedD or dataSeed actually change — never
+	// during a live drag.
+	const allData = $derived(generateSyntheticData(committedD, dataSeed * 7919 + 42));
+
 	let trainErrors = $state<number[]>([]);
 	let testErrors = $state<number[]>([]);
-	let simTargetD = $state(dFeaturesInitial);
+	let simTargetD = $state(committedDInitial);
 	let simProgress = $state(0);
 	let simulating = $state(false);
 
-	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 	let runId = 0;
 
 	function runSimulation() {
 		const myRunId = ++runId;
-		const d = dFeatures;
+		const d = committedD;
 		const { X, y } = allData;
 
 		const trainX = X.slice(0, N_TRAIN);
@@ -187,8 +200,13 @@
 			};
 		}
 
+		// FIX: chunks are now dispatched via requestAnimationFrame instead of
+		// setTimeout(0). Zero-delay timeouts can be coalesced by the browser
+		// without ever yielding to a paint, which made the "progressive"
+		// build feel like it stuttered rather than animated smoothly.
+		// requestAnimationFrame guarantees each chunk lands on its own frame.
 		function stepM(mVal: number) {
-			if (myRunId !== runId) return; // superseded by a newer run — stop silently
+			if (myRunId !== runId) return;
 			if (mVal > d) {
 				simulating = false;
 				return;
@@ -197,29 +215,23 @@
 			trainErrors = [...trainErrors, trainErr];
 			testErrors = [...testErrors, testErr];
 			simProgress = mVal;
-			setTimeout(() => stepM(mVal + 1), 0);
+			requestAnimationFrame(() => stepM(mVal + 1));
 		}
 
 		stepM(1);
 	}
 
-	function scheduleSimulation() {
-		if (debounceTimer !== null) clearTimeout(debounceTimer);
-		debounceTimer = setTimeout(runSimulation, 150);
-	}
-
 	$effect(() => {
-		void dFeatures;
+		void committedD;
 		void dataSeed;
-		scheduleSimulation();
+		runSimulation();
 	});
 
 	onDestroy(() => {
-		if (debounceTimer !== null) clearTimeout(debounceTimer);
-		runId++; // invalidate any in-flight run
+		if (commitTimer !== null) clearTimeout(commitTimer);
+		runId++;
 	});
 
-	// ── Derived metrics (guarded for partial/empty results while simulating) ──
 	const optimalM = $derived.by(() => {
 		if (testErrors.length === 0) return 1;
 		let bestIdx = 0;
@@ -229,13 +241,13 @@
 		return bestIdx + 1;
 	});
 
-	const sqrtD = $derived(Math.round(Math.sqrt(dFeatures)));
+	const sqrtD = $derived(Math.round(Math.sqrt(committedD)));
 
 	const avgCorrelation = $derived.by(() => {
 		let sumAbs = 0,
 			count = 0;
-		for (let i = 0; i < dFeatures; i++) {
-			for (let j = i + 1; j < dFeatures; j++) {
+		for (let i = 0; i < committedD; i++) {
+			for (let j = i + 1; j < committedD; j++) {
 				sumAbs += Math.abs(allData.corrMatrix[i][j]);
 				count++;
 			}
@@ -251,6 +263,8 @@
 		{ values: trainErrors, color: 'var(--color-belief)', label: 'Erreur train' },
 		{ values: testErrors, color: 'var(--color-surprise)', label: 'Erreur test' }
 	]);
+
+	const progressPct = $derived(Math.round((simProgress / Math.max(1, simTargetD)) * 100));
 
 	function regenerate() {
 		dataSeed += 1;
@@ -269,9 +283,9 @@
 	<div class="charts-row">
 		<div class="heatmap-figure">
 			<Figure type="chart">
-				<HeatmapGrid data={allData.corrMatrix} colorScale="rose" showValues={dFeatures <= 10} />
+				<HeatmapGrid data={allData.corrMatrix} colorScale="rose" showValues={committedD <= 10} />
 				{#snippet caption()}
-					Matrice de corrélation entre les {dFeatures} features (|ρ̄| = {avgCorrelation.toFixed(2)})
+					{committedD} features (|ρ̄| = {avgCorrelation.toFixed(2)})
 				{/snippet}
 			</Figure>
 		</div>
@@ -287,24 +301,30 @@
 				/>
 				{#snippet caption()}
 					{#if simulating}
-						Calcul en cours… m = {simProgress}/{simTargetD}
+						Construction en cours… m = {simProgress}/{simTargetD} ({progressPct}%)
 					{:else}
-						Erreur moyenne sur {BOOTSTRAP_SAMPLES} stumps bootstrap par valeur de m | Optimum empirique
-						: m = {optimalM}
+						Moyenne sur {BOOTSTRAP_SAMPLES} stumps bootstrap par m | Optimum empirique : m = {optimalM}
 					{/if}
 				{/snippet}
 			</Figure>
 		</div>
 	</div>
 
-	{#if simulating}
-		<div class="progress-bar">
-			<div
-				class="progress-fill"
-				style:width="{(simProgress / Math.max(1, simTargetD)) * 100}%"
-			></div>
-		</div>
-	{/if}
+	<div class="status-row">
+		{#if simulating}
+			<div class="progress-bar">
+				<div class="progress-fill" style:width="{progressPct}%"></div>
+			</div>
+			<span class="progress-pct">{progressPct}%</span>
+		{:else if pendingChange}
+			<span class="pending-note">
+				<span class="pending-dot"></span>
+				d = {dFeatures} en attente — mise à jour dans un instant…
+			</span>
+		{:else}
+			<span class="status-idle">✓ À jour</span>
+		{/if}
+	</div>
 
 	<Metrics align="center">
 		<div class="cell">
@@ -316,22 +336,22 @@
 		<div class="cell">
 			<span class="label">√d (règle empirique)</span>
 			<span class="value" style:color="var(--color-belief)">{sqrtD}</span>
-			<span class="unit">≈ √{dFeatures}</span>
+			<span class="unit">≈ √{committedD}</span>
 		</div>
 
 		<div class="cell">
 			<span class="label">Erreur test @ m optimal</span>
-			<span class="value" style:color="var(--color-surprise)"
-				>{testErrors.length ? (testErrors[optimalM - 1] * 100).toFixed(1) : '—'}%</span
-			>
+			<span class="value" style:color="var(--color-surprise)">
+				{testErrors.length ? `${(testErrors[optimalM - 1] * 100).toFixed(1)}%` : '…'}
+			</span>
 			<span class="unit">sur {N_TEST} échantillons</span>
 		</div>
 
 		<div class="cell">
 			<span class="label">Écart train/test (m=1)</span>
-			<span class="value" style:color="var(--color-text)"
-				>{(biasVarianceGap * 100).toFixed(1)}%</span
-			>
+			<span class="value" style:color="var(--color-text)">
+				{trainErrors.length ? `${(biasVarianceGap * 100).toFixed(1)}%` : '…'}
+			</span>
 			<span class="unit">overfitting du stump</span>
 		</div>
 
@@ -378,7 +398,7 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 0.5rem;
+		gap: 0.6rem;
 		width: 100%;
 	}
 
@@ -407,16 +427,18 @@
 	.charts-row {
 		display: flex;
 		flex-direction: row;
+		flex-wrap: wrap;
 		gap: 1rem;
 		width: 100%;
 		max-width: 720px;
 		align-items: stretch;
+		justify-content: center;
 	}
 
 	.heatmap-figure {
-		flex-shrink: 0;
-		width: 160px;
-		min-width: 140px;
+		flex: 0 1 200px;
+		min-width: 170px;
+		max-width: 220px;
 	}
 
 	.heatmap-figure :global(figure) {
@@ -424,26 +446,70 @@
 	}
 
 	.linechart-figure {
-		flex: 1;
-		min-width: 0;
+		flex: 1 1 320px;
+		min-width: 280px;
 
 		:global(figure) {
 			margin: 0;
 		}
 	}
 
-	.progress-bar {
+	.status-row {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
 		width: 100%;
 		max-width: 720px;
-		height: 4px;
+		font-size: 0.75rem;
+		min-height: 1.2rem;
+	}
+
+	.progress-bar {
+		flex: 1;
+		height: 5px;
 		background: var(--color-surface-2);
-		border-radius: 2px;
+		border-radius: 3px;
 		overflow: hidden;
 	}
 	.progress-fill {
 		height: 100%;
 		background: var(--color-belief);
 		transition: width 0.1s linear;
+	}
+	.progress-pct {
+		font-family: var(--font-mono, monospace);
+		color: var(--color-text-muted);
+		min-width: 2.5em;
+		text-align: right;
+	}
+
+	.pending-note {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		color: var(--color-text-muted);
+		font-style: italic;
+	}
+	.pending-dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: var(--color-surprise);
+		animation: pulse 1s ease-in-out infinite;
+	}
+	@keyframes pulse {
+		0%,
+		100% {
+			opacity: 0.4;
+		}
+		50% {
+			opacity: 1;
+		}
+	}
+
+	.status-idle {
+		color: var(--color-positive);
+		font-family: var(--font-mono, monospace);
 	}
 
 	.controls-panel {
@@ -493,5 +559,11 @@
 	.icon {
 		font-size: 1.1rem;
 		flex-shrink: 0;
+	}
+
+	@media (max-width: 560px) {
+		.info-label {
+			margin-left: 0;
+		}
 	}
 </style>

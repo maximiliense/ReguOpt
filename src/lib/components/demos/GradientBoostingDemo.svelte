@@ -264,7 +264,7 @@
 	{/snippet}
 
 	<!-- ── Chart ─────────────────────────────────────────────────── -->
-	<Figure type="chart" bind:containerWidth caption={chartCaption}>
+	<Figure type="chart" bind:containerWidth caption={chartCaption} style="width:100%">
 		{#if containerWidth > 0 && boostingHistory}
 			<svg
 				viewBox={`0 0 ${vbW} ${vbH}`}
