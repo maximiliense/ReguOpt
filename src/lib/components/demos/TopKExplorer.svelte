@@ -5,6 +5,7 @@
 	import SliderGrid from '$lib/components/layout/SliderGrid.svelte';
 	import Slider from '$lib/components/controls/Slider.svelte';
 	import KatexInline from '$lib/components/narrative/KatexInline.svelte';
+	import CurveChart from '../charts/CurveChart.svelte';
 
 	// ─── Constants ──────────────────────────────────────────────
 	const NUM_SAMPLES = 30;
@@ -298,10 +299,10 @@
 	<div class="panel-title">Courbe d'exactitude — Acc@{k} = {(currentAccAtK * 100).toFixed(1)}%</div>
 
 	<Figure type="chart">
-		<DensityChart
+		<CurveChart
 			curves={accCurves}
 			xDomain={[1, NUM_CLASSES]}
-			yMax={1.05}
+			yDomain={[0, 1]}
 			height={200}
 			nTicks={NUM_CLASSES + 1}
 			yAxis

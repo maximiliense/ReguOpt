@@ -6,7 +6,7 @@
 	import KatexInline from '$lib/components/narrative/KatexInline.svelte';
 
 	// ─── Constants ──────────────────────────────────────
-	const NUM_SAMPLES = 60;
+	const NUM_SAMPLES = 200;
 	const CLASSES = ['Chat', 'Chien', 'Oiseau', 'Poisson'];
 	const NUM_CLASSES = CLASSES.length;
 	const HIST_HEIGHT = 140;

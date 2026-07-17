@@ -74,6 +74,22 @@
 		kind?: 'line' | 'dashed-line';
 	}
 
+	// ─── Fill-between layer ───────────────────────────────────────────────────────
+
+	/**
+	 * Fills the vertical gap between two curves (identified by index into `curves`).
+	 * The region is the area where one curve is above the other, pointwise.
+	 * Renders below all curve strokes.
+	 */
+	interface FillBetween {
+		/** Index of the first curve in `curves`. */
+		curveA: number;
+		/** Index of the second curve in `curves`. */
+		curveB: number;
+		fill?: string;
+		opacity?: number;
+	}
+
 	// ─── Props ────────────────────────────────────────────────────────────────────
 
 	interface Props {
@@ -95,6 +111,8 @@
 		vlines?: VLine[];
 		/** Dots placed at arbitrary (x, y) in data space. */
 		curveDots?: CurveDot[];
+		/** Fill the gap between two curves (by index). Rendered below strokes. */
+		fillBetween?: FillBetween[];
 		/** Short label rendered top-right inside the SVG. */
 		chartLabel?: string;
 		/** Legend items rendered below the chart. */
@@ -113,6 +131,7 @@
 		yAxis = false,
 		vlines = [],
 		curveDots = [],
+		fillBetween = [],
 		chartLabel,
 		legend = [],
 		children
@@ -177,6 +196,43 @@
 
 	const ticks = $derived(xScale.ticks(nTicks));
 	const yTicks = $derived(yScale.ticks(nYTicks));
+
+	// ─── Fill-between paths ───────────────────────────────────────────────────────
+
+	const computedFillBetween = $derived.by(() => {
+		if (!containerWidth || fillBetween.length === 0) return [];
+
+		return fillBetween.map((fb) => {
+			const a = curves[fb.curveA]?.points ?? [];
+			const b = curves[fb.curveB]?.points ?? [];
+			// Assume both curves share the same x grid (same xs array).
+			// Build a polygon: top edge = max(a,b), bottom edge = min(a,b), reversed.
+			const n = Math.min(a.length, b.length);
+			if (n === 0) return { d: '', fb };
+
+			// Forward pass: upper envelope
+			const upper: Pt[] = [];
+			const lower: Pt[] = [];
+			for (let i = 0; i < n; i++) {
+				const x = a[i][0];
+				const ya = a[i][1];
+				const yb = b[i][1];
+				upper.push({ x, y: Math.max(ya, yb) });
+				lower.push({ x, y: Math.min(ya, yb) });
+			}
+
+			// Path: upper forward, lower reversed → closed polygon
+			const upperPath = upper
+				.map((p, i) => `${i === 0 ? 'M' : 'L'}${xScale(p.x).toFixed(2)} ${yScale(p.y).toFixed(2)}`)
+				.join(' ');
+			const lowerPath = [...lower]
+				.reverse()
+				.map((p) => `L${xScale(p.x).toFixed(2)} ${yScale(p.y).toFixed(2)}`)
+				.join(' ');
+
+			return { d: `${upperPath} ${lowerPath} Z`, fb };
+		});
+	});
 </script>
 
 <div class="chart-wrapper" bind:clientWidth={containerWidth}>
@@ -212,6 +268,27 @@
 						opacity={vl.labelOpacity ?? 0.8}>{vl.label}</text
 					>
 				{/if}
+			{/each}
+			<!-- ① Fill-between regions -->
+			{#each computedFillBetween as fb}
+				<path
+					d={fb.d}
+					fill={fb.fb.fill ?? 'var(--color-surprise)'}
+					opacity={fb.fb.opacity ?? 0.12}
+				/>
+			{/each}
+
+			<!-- ② Curves -->
+			{#each computedPaths as p}
+				<path
+					d={p.curvePath}
+					fill="none"
+					stroke={p.layer.stroke ?? 'var(--color-text-muted)'}
+					stroke-width={p.layer.strokeWidth ?? 2}
+					stroke-dasharray={p.layer.strokeDasharray ?? undefined}
+					stroke-linejoin={p.layer.strokeLinejoin ?? 'round'}
+					opacity={p.layer.opacity ?? 1}
+				/>
 			{/each}
 
 			<!-- ② Curves -->

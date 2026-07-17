@@ -111,10 +111,6 @@
 		</p>
 	</TheorySection>
 
-	<InteractiveSection tag="Démo 9.2">
-		<AccuracyKCutoff />
-	</InteractiveSection>
-
 	<TheorySection>
 		<h2>Calibration de la confiance</h2>
 

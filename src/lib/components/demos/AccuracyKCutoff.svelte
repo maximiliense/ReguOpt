@@ -1,17 +1,17 @@
 <script lang="ts">
-	import DensityChart from '$lib/components/charts/DensityChart.svelte';
 	import Figure from '$lib/components/charts/Figure.svelte';
 	import SliderGrid from '$lib/components/layout/SliderGrid.svelte';
 	import Slider from '$lib/components/controls/Slider.svelte';
 	import KatexInline from '$lib/components/narrative/KatexInline.svelte';
 	import { findOptimalK } from '$lib/math/prediction-sets';
+	import CurveChart from '../charts/CurveChart.svelte';
 
 	// ─── Constants ──────────────────────────────────────
-	const NUM_SAMPLES = 40;
+	const NUM_SAMPLES = 200;
 	const CLASSES = ['Chat', 'Chien', 'Oiseau', 'Poisson', 'Lapin'];
 	const NUM_CLASSES = CLASSES.length;
 
-	// ─── Seeded PRNG (deterministic demo data) ──────────
+	// ─── Seeded PRNG ────────────────────────────────────
 	function mulberry32(seed: number): () => number {
 		return function () {
 			let s = (seed |= 0);
@@ -29,43 +29,58 @@
 		return exps.map((e) => e / sum);
 	}
 
-	// ─── Static base data (seeded once at module level) ──
+	// ─── Static sample population ───────────────────────
 	interface SampleBase {
 		trueClass: number;
-		baseLogits: number[];
-		noises: number[];
+		signal: number[];
+		noise: number[];
 	}
 
 	const rand = mulberry32(42);
 	const samples: SampleBase[] = [];
 
-	for (let s = 0; s < NUM_SAMPLES; s++) {
+	for (let i = 0; i < NUM_SAMPLES; i++) {
 		const trueClass = Math.floor(rand() * NUM_CLASSES);
-		const baseLogits = Array.from({ length: NUM_CLASSES }, (_, c) => {
-			if (c === trueClass) return 2.0 + rand() * 3;
-			return -1 + rand() * 2;
+
+		// Weak class separation:
+		// top-1 is imperfect, but top-K can recover.
+		const signal = Array.from({ length: NUM_CLASSES }, (_, c) => {
+			if (c === trueClass) {
+				return 0.4 + rand() * 0.8;
+			}
+			return rand() * 0.8;
 		});
-		const noises = Array.from({ length: NUM_CLASSES }, () => (rand() - 0.5) * 3);
-		samples.push({ trueClass, baseLogits, noises });
+
+		const noise = Array.from({ length: NUM_CLASSES }, () => rand() - 0.5);
+
+		samples.push({
+			trueClass,
+			signal,
+			noise
+		});
 	}
 
-	// ─── Reactive state ────────────────────────────────
+	// ─── Controls ───────────────────────────────────────
 	let targetAccuracy = $state(0.85);
 	let noiseLevel = $state(0.8);
 
-	// ─── Derived: probabilities with current noise ──────
+	// ─── Current prediction probabilities ───────────────
 	const data = $derived.by(() => {
 		const yTrue: number[] = [];
 		const yProba: number[][] = [];
+
 		for (const s of samples) {
 			yTrue.push(s.trueClass);
-			const logits = s.baseLogits.map((l, c) => l + s.noises[c] * noiseLevel);
+
+			const logits = s.signal.map((v, c) => v + s.noise[c] * noiseLevel);
+
 			yProba.push(softmax(logits));
 		}
+
 		return { yTrue, yProba };
 	});
 
-	// ─── Derived: optimal K search + accuracy curve ─────
+	// ─── Accuracy@K computation ─────────────────────────
 	const optResult = $derived.by(() => findOptimalK(data.yTrue, data.yProba, targetAccuracy));
 
 	const accCurvePoints = $derived(
@@ -74,12 +89,16 @@
 
 	const optimalAcc = $derived(optResult.accuracies[optResult.k - 1]);
 
-	// Whether the target is actually achievable (at K = num_classes accuracy should be ~1.0)
-	const targetAchievable = $derived(optimalAcc >= targetAccuracy);
+	const top1Accuracy = $derived(optResult.accuracies[0]);
+
+	const topKGain = $derived(optimalAcc - top1Accuracy);
+
+	const maxAcc = $derived(optResult.accuracies[NUM_CLASSES - 1]);
+
+	const targetAchievable = $derived(maxAcc >= targetAccuracy);
 
 	// ─── Chart layers ──────────────────────────────────
 
-	// Curve index 0 — accuracy@K line with fill below
 	const accCurve = $derived({
 		points: accCurvePoints,
 		stroke: 'var(--color-belief)',
@@ -88,7 +107,6 @@
 		fillOpacity: 0.12
 	});
 
-	// Curve index 1 — horizontal dashed threshold line
 	const thresholdCurve = $derived({
 		points: [
 			[1, targetAccuracy],
@@ -102,7 +120,6 @@
 
 	const curves = $derived([accCurve, thresholdCurve]);
 
-	// Fill between accuracy curve (0) and threshold curve (1) — shades the gap
 	const fillRegion = $derived([
 		{
 			curveA: 0,
@@ -112,7 +129,6 @@
 		}
 	]);
 
-	// Optimal K marker dot on curve
 	const optimalDot = $derived([
 		{
 			x: optResult.k,
@@ -128,7 +144,6 @@
 		}
 	]);
 
-	// Vertical guide line at optimal K
 	const optVline = $derived([
 		{
 			x: optResult.k,
@@ -138,9 +153,12 @@
 		}
 	]);
 
-	// Legend entries
 	const legend = $derived([
-		{ label: 'Acc@K', color: 'var(--color-belief)', kind: 'line' as const },
+		{
+			label: 'Acc@K',
+			color: 'var(--color-belief)',
+			kind: 'line' as const
+		},
 		{
 			label: `Seuil ${targetAccuracy.toFixed(2)}`,
 			color: 'var(--color-surprise)',
@@ -156,30 +174,43 @@
 			<span class="metric-label">K optimal</span>
 			<span class="metric-value">{optResult.k}</span>
 		</div>
+
 		<div class="metric-divider"></div>
+
 		<div class="metric-item">
 			<span class="metric-label">Acc@{optResult.k}</span>
-			<span class="metric-value">{(optimalAcc * 100).toFixed(1)}%</span>
+			<span class="metric-value">
+				{(optimalAcc * 100).toFixed(1)}%
+			</span>
 		</div>
+
 		<div class="metric-divider"></div>
+
+		<div class="metric-item">
+			<span class="metric-label">Gain vs Top-1</span>
+			<span class="metric-value">
+				+{(topKGain * 100).toFixed(1)}%
+			</span>
+		</div>
+
+		<div class="metric-divider"></div>
+
 		<div class="metric-item" class:achieved={targetAchievable}>
 			<span class="metric-label">Cible</span>
-			<span class="metric-value"
-				>{targetAccuracy >= optimalAcc ? '✗ Non atteint' : '✓ Atteint'}</span
-			>
+			<span class="metric-value">
+				{targetAchievable ? '✓ Atteinte' : '✗ Impossible'}
+			</span>
 		</div>
 	</div>
 
 	<!-- ════════════════ Accuracy@K chart ═══════════════ -->
-	<div class="panel-title">
-		Courbe d'exactitude — recherche de K minimal pour Acc ≥ {targetAccuracy.toFixed(2)}
-	</div>
+	<div class="panel-title">Exactitude cumulative — gain apporté par les prédictions Top-K</div>
 
 	<Figure type="chart">
-		<DensityChart
+		<CurveChart
 			{curves}
 			xDomain={[1, NUM_CLASSES]}
-			yMax={1.05}
+			yDomain={[0, 1.05]}
 			height={240}
 			nTicks={NUM_CLASSES + 1}
 			yAxis
@@ -194,25 +225,31 @@
 	<SliderGrid variant="outline">
 		<div class="grp">
 			<div class="gttl">Précision cible</div>
+
 			<Slider bind:value={targetAccuracy} min={0.5} max={1.0} step={0.01} label="Acc" />
 		</div>
+
 		<div class="grp">
-			<div class="gttl">Bruit du jeu de données</div>
+			<div class="gttl">Ambiguïté du modèle</div>
+
 			<Slider bind:value={noiseLevel} min={0} max={2} step={0.05} label="σ" />
 		</div>
 	</SliderGrid>
 
 	<!-- ════════════════ Caption ═══════════════ -->
 	<p class="cap">
-		En pratique, on cherche le plus petit <strong>K</strong> tel que
-		<KatexInline formula={String.raw`\text{Acc@}K \geq \tau`} /> où &thau; est un seuil de précision choisi
-		(ici <KatexInline formula={String.raw`\tau = ${targetAccuracy.toFixed(2)}`} />). Ce compromis
-		permet de garantir une couverture suffisante de la vraie classe tout en gardant l'ensemble de
-		prédiction le plus restreint possible. Lorsque les séparations entre classes sont faibles (bruit
-		élevé), il faut un <strong>K</strong> plus grand pour atteindre le même seuil — il est alors
-		impossible d'être très sélectif sans sacrifier la précision. La règle de décision se formalise : <KatexInline
-			formula={String.raw`K^* = \arg\min_{K}\; K \;\text{s.t.}\; \text{Acc@}K \geq \tau`}
-		/>.
+		La prédiction Top-K conserve les K classes les plus probables. L'exactitude <KatexInline
+			formula={String.raw`\text{Acc@}K`}
+		/>
+		mesure la proportion d'exemples où la vraie classe apparaît parmi ces K hypothèses. On choisit le
+		plus petit K satisfaisant :
+		<KatexInline formula={String.raw`\text{Acc@}K \geq \tau`} />.
+		<br />
+
+		Pour un modèle peu ambigu, le Top-1 suffit souvent. Lorsque les scores sont plus proches (bruit
+		élevé), augmenter K permet de récupérer des prédictions manquées : la différence
+		<KatexInline formula={String.raw`\text{Acc@}K-\text{Acc@}1`} />
+		représente le gain apporté par le raisonnement Top-K.
 	</p>
 </div>
 
