@@ -1,148 +1,176 @@
 <script lang="ts">
-	import DensityChart from '$lib/components/charts/DensityChart.svelte';
+	import CurveChart from '$lib/components/charts/CurveChart.svelte';
 	import Figure from '$lib/components/charts/Figure.svelte';
 	import SliderGrid from '$lib/components/layout/SliderGrid.svelte';
 	import Slider from '$lib/components/controls/Slider.svelte';
 	import KatexInline from '$lib/components/narrative/KatexInline.svelte';
-	import { crossValidateRidge, generateSyntheticData } from '$lib/math/bias-variance.js';
-	import { polyEval, ridgeSolver, polynomialFeatures } from '$lib/math/bias-variance.js';
 
-	// Controls
+	import {
+		crossValidateRidge,
+		generateSyntheticData,
+		polyEval,
+		ridgeSolver,
+		polynomialFeatures
+	} from '$lib/math/bias-variance.js';
+
+	/* ------------------------------------------------------------------ */
+	/* Controls                                                            */
+	/* ------------------------------------------------------------------ */
+
 	let degree = $state(5);
 	let kFolds = $state(5);
 	let numSamples = $state(100);
 
 	const maxDegree = 8;
 
-	// Generate data and compute CV scores
+	/* ------------------------------------------------------------------ */
+	/* Data                                                                 */
+	/* ------------------------------------------------------------------ */
+
 	const synthData = $derived.by(() => generateSyntheticData(numSamples, 0.3));
 
-	const lambdas = $derived(
-		Array.from({ length: 150 }, (_, i) => {
-			return Math.exp(-8 + 16 * (i / 149));
-		})
-	);
+	/*
+	 * Lambda is sampled logarithmically because ridge regularization
+	 * spans several orders of magnitude.
+	 */
+	const lambdas = $derived(Array.from({ length: 120 }, (_, i) => Math.exp(-8 + (16 * i) / 119)));
 
-	// ── Cross-validation with per-fold MSEs → mean + std ──────────────
+	/* ------------------------------------------------------------------ */
+	/* Cross validation                                                    */
+	/* ------------------------------------------------------------------ */
+
 	const cvResult = $derived.by(() => {
-		const n = synthData.xs.length;
-		const k = kFolds;
-		const foldSize = Math.floor(n / k);
+		const xs = synthData.xs;
+		const ys = synthData.ys;
 
-		// Build folds (sequential for reproducibility)
-		const folds: Array<{ trainIdx: number[]; valIdx: number[] }> = [];
-		for (let f = 0; f < k; f++) {
-			const valStart = f * foldSize;
-			const valEnd = f === k - 1 ? n : (f + 1) * foldSize;
-			const valIdx = Array.from({ length: valEnd - valStart }, (_, i) => valStart + i);
-			const trainIdx = [
-				...Array.from({ length: valStart }, (_, i) => i),
-				...Array.from({ length: n - valEnd }, (_, i) => valEnd + i)
-			];
-			folds.push({ trainIdx, valIdx });
-		}
+		const n = xs.length;
+		const foldSize = Math.floor(n / kFolds);
 
-		const cvScores: number[] = [];
-		const cvStds: number[] = [];
+		const folds = Array.from({ length: kFolds }, (_, fold) => {
+			const start = fold * foldSize;
+			const end = fold === kFolds - 1 ? n : start + foldSize;
+
+			return {
+				valIdx: Array.from({ length: end - start }, (_, i) => start + i),
+
+				trainIdx: Array.from({ length: n }, (_, i) => i).filter((i) => i < start || i >= end)
+			};
+		});
+
+		const scores: number[] = [];
+		const stds: number[] = [];
 
 		for (const lambda of lambdas) {
-			const foldMses: number[] = [];
+			const foldScores: number[] = [];
 
-			for (const { trainIdx, valIdx } of folds) {
-				const xsTr = trainIdx.map((i) => synthData.xs[i]);
-				const ysTr = trainIdx.map((i) => synthData.ys[i]);
-				const xsVal = valIdx.map((i) => synthData.xs[i]);
-				const ysVal = valIdx.map((i) => synthData.ys[i]);
+			for (const fold of folds) {
+				const xTrain = fold.trainIdx.map((i) => xs[i]);
 
-				const X = polynomialFeatures(xsTr, degree);
-				const coeffs = ridgeSolver(X, ysTr, lambda);
+				const yTrain = fold.trainIdx.map((i) => ys[i]);
 
-				let foldMse = 0;
-				for (let i = 0; i < xsVal.length; i++) {
-					const pred = polyEval(coeffs, xsVal[i]);
-					foldMse += (pred - ysVal[i]) ** 2;
+				const xVal = fold.valIdx.map((i) => xs[i]);
+
+				const yVal = fold.valIdx.map((i) => ys[i]);
+
+				const X = polynomialFeatures(xTrain, degree);
+
+				const coeffs = ridgeSolver(X, yTrain, lambda);
+
+				let mse = 0;
+
+				for (let i = 0; i < xVal.length; i++) {
+					const pred = polyEval(coeffs, xVal[i]);
+
+					mse += (pred - yVal[i]) ** 2;
 				}
-				foldMses.push(foldMse / xsVal.length);
+
+				foldScores.push(mse / xVal.length);
 			}
 
-			// Mean across folds
-			const mean = foldMses.reduce((a, b) => a + b, 0) / foldMses.length;
-			cvScores.push(mean);
+			const mean = foldScores.reduce((a, b) => a + b, 0) / foldScores.length;
 
-			// Standard deviation across folds (1-sigma band)
+			scores.push(mean);
+
 			const variance =
-				foldMses.reduce((acc, v) => acc + (v - mean) ** 2, 0) / (foldMses.length - 1 || 1);
-			cvStds.push(Math.sqrt(variance));
+				foldScores.reduce((acc, value) => acc + (value - mean) ** 2, 0) /
+				Math.max(1, foldScores.length - 1);
+
+			stds.push(Math.sqrt(variance));
 		}
 
-		return { lambdas, cvScores, cvStds };
+		return {
+			scores,
+			stds
+		};
 	});
 
-	// ── Training error (fit on full data, evaluate on same) ───────────
+	/* ------------------------------------------------------------------ */
+	/* Training error                                                      */
+	/* ------------------------------------------------------------------ */
+
 	const trainError = $derived.by(() => {
 		const X = polynomialFeatures(synthData.xs, degree);
+
 		return lambdas.map((lambda) => {
 			const coeffs = ridgeSolver(X, synthData.ys, lambda);
+
 			let mse = 0;
+
 			for (let i = 0; i < synthData.xs.length; i++) {
 				const pred = polyEval(coeffs, synthData.xs[i]);
+
 				mse += (pred - synthData.ys[i]) ** 2;
 			}
+
 			return mse / synthData.xs.length;
 		});
 	});
 
-	// ── Build chart curves ────────────────────────────────────────────
-	const curves = $derived.by(() => {
-		const pts: Array<{
-			points: [number, number][];
-			stroke?: string;
-			strokeWidth?: number;
-			fill?: string;
-			fillOpacity?: number;
-		}> = [];
+	/* ------------------------------------------------------------------ */
+	/* CurveChart data                                                     */
+	/* ------------------------------------------------------------------ */
 
-		// Validation error curve with 1-sigma band (fill under mean)
-		pts.push({
-			points: lambdas.map((l, i) => [Math.log10(l), cvResult.cvScores[i]] as [number, number]),
+	const curves = $derived([
+		{
+			points: lambdas.map(
+				(lambda, i) => [Math.log10(lambda), cvResult.scores[i]] as [number, number]
+			),
+
 			stroke: '#ef4444',
-			strokeWidth: 2.5,
-			fill: '#ef4444',
-			fillOpacity: 0.15
-		});
+			strokeWidth: 2.5
+		},
 
-		// Training error curve (comparison)
-		pts.push({
-			points: lambdas.map((l, i) => [Math.log10(l), trainError[i]] as [number, number]),
+		{
+			points: lambdas.map((lambda, i) => [Math.log10(lambda), trainError[i]] as [number, number]),
+
 			stroke: '#3b82f6',
-			strokeWidth: 2.5,
-			fill: '#3b82f6',
-			fillOpacity: 0.1
-		});
+			strokeWidth: 2.5
+		}
+	]);
 
-		return pts;
-	});
+	/* ------------------------------------------------------------------ */
+	/* Optimal lambda                                                      */
+	/* ------------------------------------------------------------------ */
 
-	// ── Find optimal lambda (minimum CV error) ────────────────────────
 	const optIdx = $derived.by(() => {
-		let minIdx = 0,
-			minVal = Infinity;
-		for (let i = 0; i < cvResult.cvScores.length; i++) {
-			if (cvResult.cvScores[i] < minVal) {
-				minVal = cvResult.cvScores[i];
-				minIdx = i;
+		let best = 0;
+
+		for (let i = 1; i < cvResult.scores.length; i++) {
+			if (cvResult.scores[i] < cvResult.scores[best]) {
+				best = i;
 			}
 		}
-		return minIdx;
+
+		return best;
 	});
 
 	const optLambda = $derived(lambdas[optIdx]);
-	const optLog10Lambda = $derived(Math.log10(optLambda));
 
-	// Vertical line at optimal lambda
+	const optLogLambda = $derived(Math.log10(optLambda));
+
 	const vlines = $derived([
 		{
-			x: optLog10Lambda,
+			x: optLogLambda,
 			stroke: '#22c55e',
 			strokeWidth: 2,
 			label: `λ* = ${optLambda.toFixed(3)}`,
@@ -150,56 +178,92 @@
 		}
 	]);
 
-	const legend = $derived([
-		{ label: 'Erreur validation (CV)', color: '#ef4444', kind: 'fill' as const },
-		{ label: 'Erreur entraînement', color: '#3b82f6', kind: 'line' as const }
-	]);
+	const legend = [
+		{
+			label: 'Erreur validation (CV)',
+			color: '#ef4444',
+			kind: 'line' as const
+		},
+		{
+			label: 'Erreur entraînement',
+			color: '#3b82f6',
+			kind: 'line' as const
+		}
+	];
 
-	// X domain for log10(lambda) axis
-	const xDomain = $derived([-3, 1]);
+	/* ------------------------------------------------------------------ */
+	/* Axis domain                                                         */
+	/* ------------------------------------------------------------------ */
+
+	const xDomain = $derived([Math.log10(lambdas[0]), Math.log10(lambdas[lambdas.length - 1])] as [
+		number,
+		number
+	]);
 </script>
 
 <div class="cv-selector">
-	<Figure type="chart">
-		<DensityChart
-			{curves}
-			xDomain={xDomain as [number, number]}
-			height={280}
-			nTicks={6}
-			yAxis={true}
-			{vlines}
-			{legend}
-			chartLabel="Erreur quadratique"
-		/>
-	</Figure>
+	<div class="chart-area">
+		<Figure type="chart">
+			<CurveChart
+				{curves}
+				{xDomain}
+				height={280}
+				nTicks={6}
+				yAxis={true}
+				{vlines}
+				{legend}
+				chartLabel="Erreur quadratique"
+			/>
+		</Figure>
+	</div>
 
-	<!-- Optimal lambda display -->
+	<!-- Optimal lambda -->
 	<div class="opt-display">
-		<span class="opt-label">λ optimal :</span>
-		<span class="opt-value">{optLambda.toFixed(4)}</span>
-		<span class="opt-desc">(min erreur validation : {cvResult.cvScores[optIdx].toFixed(4)})</span>
+		<span class="opt-label"> λ optimal : </span>
+
+		<span class="opt-value">
+			{optLambda.toFixed(4)}
+		</span>
+
+		<span class="opt-desc">
+			(min erreur validation :
+			{cvResult.scores[optIdx].toFixed(4)})
+		</span>
 	</div>
 
 	<!-- Controls -->
 	<SliderGrid variant="outline">
 		<div class="grp">
 			<div class="gttl">Modèle</div>
+
 			<Slider bind:value={degree} min={1} max={maxDegree} step={1} label="Degré polynôme" />
 		</div>
+
 		<div class="grp">
 			<div class="gttl">Validation croisée</div>
+
 			<Slider bind:value={kFolds} min={2} max={10} step={1} label="K (folds)" unit="folds" />
+		</div>
+
+		<div class="grp">
+			<div class="gttl">Données</div>
+
+			<Slider bind:value={numSamples} min={30} max={300} step={10} label="Nombre d'échantillons" />
 		</div>
 	</SliderGrid>
 
 	<p class="cap">
-		La validation croisée partitionne les données en K folds. Pour chaque λ, on entraîne sur K-1
-		folds et valide sur le fold restant — puis on moyenne. Le λ optimal minimise l'erreur de
-		validation (ligne verte). L'erreur d'entraînement décroît toujours avec <KatexInline
-			formula="\\lambda"
-		/>
-		(modèle plus simple = moins de bruit), mais la validation suit un U caractéristique : trop faible
-		→ surajustement, trop fort → sous-ajustement.
+		La validation croisée sépare les données en plusieurs folds. Pour chaque valeur de
+		<KatexInline formula="\\lambda" />, le modèle est entraîné sur une partie des données puis
+		évalué sur les données restantes. La ligne verte indique la valeur de
+		<KatexInline formula="\\lambda" />
+		qui minimise l'erreur de validation. Quand
+		<KatexInline formula="\\lambda" />
+		est faible, le modèle est peu contraint et peut apprendre le bruit (surapprentissage). Quand
+		<KatexInline formula="\\lambda" />
+		est trop élevé, la régularisation rend le modèle trop simple (sous-ajustement). L'erreur d'entraînement
+		augmente généralement avec la régularisation, car le modèle perd progressivement sa capacité à ajuster
+		les données.
 	</p>
 </div>
 

@@ -194,7 +194,7 @@
 	<p class="cap">
 		Ridge n'applique pas un rétrécissement uniforme. Les directions bien déterminées (grand
 		<KatexInline formula="d_i" />, en bleu) conservent la plupart de leur information même à fort
-		<KatexInline formula="\\lambda" />. Les directions peu déterminées (petit
+		<KatexInline formula={String.raw`\lambda`} />. Les directions peu déterminées (petit
 		<KatexInline formula="d_i" />, en rouge) sont fortement rétrécies — c'est exactement ce qu'on
 		veut : réduire le bruit dans les directions instables tout en préservant le signal dans les
 		directions fiables.
@@ -266,14 +266,8 @@
 		overflow: hidden;
 		display: flex;
 	}
-	.bar-fill.retained {
-		transition:
-			width 0.1s ease,
-			height 0.1s ease;
-	}
 	.bar-fill.lost {
 		background: rgba(255, 255, 255, 0.1);
-		transition: width 0.1s ease;
 	}
 
 	.sf-value {

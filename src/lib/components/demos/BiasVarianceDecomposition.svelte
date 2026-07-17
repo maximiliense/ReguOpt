@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
-	import DensityChart from '$lib/components/charts/DensityChart.svelte';
+	import CurveChart from '$lib/components/charts/CurveChart.svelte';
 	import Figure from '$lib/components/charts/Figure.svelte';
 	import SliderGrid from '$lib/components/layout/SliderGrid.svelte';
 	import Slider from '$lib/components/controls/Slider.svelte';
@@ -19,24 +19,20 @@
 	const NUM_FITS = 20;
 	const SUBSAMPLE_FRAC = 0.6;
 
-	// ─── Synthetic data (regenerate when samples or noise change) ──
 	let synthData = $derived.by(() => generateSyntheticData(numSamples, noiseStd));
 
-	// Evaluation domain [0..1] at fine resolution for smooth curves
 	const NUM_EVAL = 100;
 	const evalXs = $derived(Array.from({ length: NUM_EVAL }, (_, i) => i / (NUM_EVAL - 1)));
 
-	// ─── Curve type matching DensityChart's CurveLayer interface ──────────
+	// CurveLayer as accepted by CurveChart — stroke only, no fill.
 	interface CurveLayer {
 		points: [number, number][];
 		stroke?: string;
 		strokeWidth?: number;
+		strokeDasharray?: string;
 		opacity?: number;
-		fill?: string;
-		fillOpacity?: number;
 	}
 
-	// ─── Matrix helpers (duplicated from bias-variance.ts to fit polynomials inline) ──
 	function transpose(M: number[][], m: number, n: number): number[][] {
 		const T = Array.from({ length: n }, () => new Array(m).fill(0));
 		for (let i = 0; i < m; i++) for (let j = 0; j < n; j++) T[j][i] = M[i][j];
@@ -162,66 +158,55 @@
 		});
 	});
 
-	// ─── Main stacked chart curves ──
+	// ─── Main chart: no fill support in CurveChart, so the "stacked area"
+	// reading is now conveyed by the GAP between three overlaid lines instead
+	// of filled bands. Gap(gray, red) = bias², gap(red, dark) = variance. ──
 	const noiseStdSq = $derived(noiseStd * noiseStd);
 
-	let chartCurves = $derived.by(() => {
-		const pts: CurveLayer[] = [];
-
-		// 1. Noise floor (constant gray band)
-		pts.push({
-			points: evalXs.map((x, i) => [decomp[i].x, noiseStdSq]),
-			fill: '#6b7280',
-			fillOpacity: 0.35
-		});
-
-		// 2. Cumulative bias² + noise (red area sits on top of noise floor)
-		const biasCumulative = decomp.map((d) => [d.x, d.biasSq + noiseStdSq] as [number, number]);
-		pts.push({ points: biasCumulative, fill: '#ef4444', fillOpacity: 0.25 });
-
-		// 3. Cumulative total = bias² + variance + noise (blue area on top)
-		const totalCumulative = decomp.map(
+	let chartCurves = $derived.by((): CurveLayer[] => {
+		const noiseLine = evalXs.map((x) => [x, noiseStdSq] as [number, number]);
+		const biasLine = decomp.map((d) => [d.x, d.biasSq + noiseStdSq] as [number, number]);
+		const totalLine = decomp.map(
 			(d) => [d.x, d.biasSq + d.variance + noiseStdSq] as [number, number]
 		);
-		pts.push({ points: totalCumulative, fill: '#3b82f6', fillOpacity: 0.2 });
 
-		// 4. Total error line (stroke on top of all fills)
-		const strokePoints = decomp.map(
-			(d) => [d.x, d.biasSq + d.variance + noiseStdSq] as [number, number]
-		);
-		pts.push({ points: strokePoints, stroke: '#1f2937', strokeWidth: 2.5 });
-
-		return pts;
+		return [
+			{
+				points: noiseLine,
+				stroke: '#6b7280',
+				strokeWidth: 1.5,
+				strokeDasharray: '5 4',
+				opacity: 0.8
+			},
+			{ points: biasLine, stroke: '#ef4444', strokeWidth: 2, opacity: 0.9 },
+			{ points: totalLine, stroke: '#1f2937', strokeWidth: 2.5, opacity: 1 }
+		];
 	});
 
 	const chartLegend = $derived([
-		{ label: 'Biais²', color: '#ef4444', kind: 'fill' as const },
-		{ label: 'Variance', color: '#3b82f6', kind: 'fill' as const },
-		{ label: 'σ²(bruit)', color: '#6b7280', kind: 'fill' as const },
-		{ label: 'Erreur totale', color: '#1f2937', kind: 'line' as const }
+		{ label: 'σ²(bruit)', color: '#6b7280', kind: 'dashed-line' as const },
+		{ label: 'Biais² + bruit', color: '#ef4444', kind: 'line' as const },
+		{ label: 'Erreur totale (= + variance)', color: '#1f2937', kind: 'line' as const }
 	]);
 
-	// ─── Metrics (average across x-axis) ──
 	const avgBiasSq = $derived(decomp.reduce((s, d) => s + d.biasSq, 0) / NUM_EVAL);
 	const avgVariance = $derived(decomp.reduce((s, d) => s + d.variance, 0) / NUM_EVAL);
 	const avgTotal = $derived(avgBiasSq + avgVariance + noiseStdSq);
 
-	// ─── Diagnostic label ──
 	const diagnostic = $derived.by(() => {
 		if (degree <= 2) return 'Sous-ajustement';
 		if (degree >= 7) return 'Sur-ajustement';
 		return 'Ajustement équilibré';
 	});
 
-	// ─── Empirical scatter panel curves ──
 	const trueFuncCurve = $derived(evalXs.map((x) => [x, synthData.trueFunc(x)] as [number, number]));
 
-	let fitPanelCurves = $derived.by(() => {
+	// No clamping of data — the curves keep their real (possibly wild) values.
+	let fitPanelCurves = $derived.by((): CurveLayer[] => {
 		const pts: CurveLayer[] = [];
 		for (const curve of bootstrapFits) {
 			pts.push({ points: curve, stroke: '#6366f1', strokeWidth: 1.2, opacity: 0.3 });
 		}
-		// True function on top
 		pts.push({ points: trueFuncCurve, stroke: '#22c55e', strokeWidth: 2.5, opacity: 0.9 });
 		return pts;
 	});
@@ -231,17 +216,28 @@
 		{ label: 'Fonction vraie f(x)', color: '#22c55e', kind: 'line' as const }
 	]);
 
-	// ─── Compute Y max for the scatter panel to clip wild extrapolations ──
-	const fitPanelYMax = $derived.by(() => {
-		const allVals = bootstrapFits.flat().map(([, y]) => Math.abs(y));
-		return Math.min(Math.max(...allVals) * 1.15, 20); // cap at 20 to avoid extreme scales
+	// ─── Fixed y-domain anchored on the REAL signal, never on the bootstrap
+	// fits themselves. When a high-degree polynomial diverges near the edges,
+	// its curve simply gets clipped by the chart's own SVG boundary (native
+	// overflow:hidden) instead of stretching the axis and crushing the
+	// visible signal into an unreadable sliver. No data is ever clamped. ──
+	const signalRange = $derived.by(() => {
+		const trueVals = trueFuncCurve.map(([, y]) => y);
+		const allVals = [...trueVals, ...synthData.ys];
+		return { min: Math.min(...allVals), max: Math.max(...allVals) };
+	});
+
+	const fitPanelYDomain = $derived.by((): [number, number] => {
+		const span = signalRange.max - signalRange.min || 1;
+		const margin = Math.max(span * 0.6, 3 * noiseStd);
+		return [signalRange.min - margin, signalRange.max + margin];
 	});
 
 	// ─── Autoplay: sweep degree from 1 → maxDegree and back ──
 	let rafId: number | null = null;
 	let direction = 1;
 	let frameCount = 0;
-	const FRAMES_PER_TICK = 60; // ~1 second between ticks at 60fps
+	const FRAMES_PER_TICK = 60;
 
 	function playTick() {
 		frameCount++;
@@ -281,9 +277,9 @@
 </script>
 
 <div class="bv-wrap">
-	<!-- ═══ Main stacked error chart ═══════════════════════════ -->
+	<!-- ═══ Main stacked error chart (lines, gap-based reading) ══════════ -->
 	<Figure type="chart">
-		<DensityChart
+		<CurveChart
 			curves={chartCurves}
 			xDomain={[0, 1]}
 			height={230}
@@ -294,7 +290,6 @@
 		/>
 	</Figure>
 
-	<!-- ═══ Metrics cards ═════════════════════════════════════ -->
 	<div class="metrics">
 		<div class="metric-card bias-card">
 			<span class="metric-label">Biais² moy.</span>
@@ -314,29 +309,33 @@
 		</div>
 	</div>
 
-	<!-- ═══ Diagnostic label ═════════════════════════════════ -->
 	<div class="diagnostic">
 		Degré {degree} — <strong>{diagnostic}</strong>
 	</div>
 
-	<!-- ═══ Empirical scatter: multiple bootstrap fits ══════════════ -->
-	<Figure type="chart">
-		<DensityChart
-			curves={fitPanelCurves}
-			xDomain={[0, 1]}
-			yMax={fitPanelYMax}
-			height={200}
-			nTicks={6}
-			yAxis
-			legend={fitPanelLegend}
-			chartLabel="Ajustements empiriques"
-		/>
-	</Figure>
+	<!-- ═══ Empirical scatter: multiple bootstrap fits, axis fixed on signal ══ -->
+	<div class="chart-clip">
+		<Figure type="chart">
+			<CurveChart
+				curves={fitPanelCurves}
+				xDomain={[0, 1]}
+				yDomain={fitPanelYDomain}
+				height={200}
+				nTicks={6}
+				yAxis
+				legend={fitPanelLegend}
+				chartLabel="Ajustements empiriques"
+			/>
+		</Figure>
+	</div>
 
 	<p class="scatter-cap">
 		Chaque courbe semi-transparente est un polynôme de degré <strong>{degree}</strong> ajusté sur un
-		sous-échantillon bootstrap. Lorsque le degré est élevé, les modèles divergent fortement — c'est
-		la manifestation visuelle de
+		sous-échantillon bootstrap. L'axe Y est <strong>fixé sur l'amplitude du signal réel</strong>,
+		pas sur celle des ajustements — les courbes qui divergent fortement (haut degré) sortent
+		simplement du cadre visible (rognées par le bord du graphique) au lieu d'écraser le signal en
+		dilatant l'échelle. Aucune donnée n'est modifiée : seule la zone affichée change. Quand le degré
+		est élevé, les modèles divergent fortement — c'est la manifestation visuelle de
 		<strong>la variance</strong>. À bas degré, ils restent regroupés mais peuvent ne pas capturer la
 		fonction vraie (biais).
 	</p>
@@ -367,7 +366,6 @@
 		</div>
 	</SliderGrid>
 
-	<!-- ═══ Autoplay + noise slider row ══════════════════════ -->
 	<div class="controls-row">
 		<button class="play-btn" class:playing onclick={togglePlay}>
 			{playing ? '⏸ Pause' : '▶ Balayer les degrés'}
@@ -376,7 +374,6 @@
 		<Slider bind:value={noiseStd} min={0.05} max={1.5} step={0.05} label="σ (bruit)" logarithmic />
 	</div>
 
-	<!-- ═══ Caption / formula ════════════════════════════════ -->
 	<p class="cap">
 		Décomposition biais-variance : <KatexInline
 			formula={'E[(y - \\hat{f}(x))^2] = \\text{Biais}[\\hat{f}]^2 + \\text{Var}(\\hat{f}) + \\sigma^2_{\\text{bruit}}'}
@@ -398,7 +395,16 @@
 		border-radius: 8px;
 	}
 
-	/* ─── Metrics cards ──────────────────────────────────── */
+	/* Explicit clip boundary — belt-and-suspenders alongside the SVG's own
+	   default overflow:hidden, so any point projected outside yDomain never
+	   visually escapes this box regardless of how CurveChart's inner <svg>
+	   is styled. */
+	.chart-clip {
+		width: 100%;
+		overflow: hidden;
+		border-radius: var(--radius-md, 8px);
+	}
+
 	.metrics {
 		display: grid;
 		grid-template-columns: repeat(4, 1fr);
@@ -442,7 +448,6 @@
 		color: var(--color-text, inherit);
 	}
 
-	/* ─── Diagnostic label ───────────────────────────────── */
 	.diagnostic {
 		text-align: center;
 		font-size: 0.8rem;
@@ -454,7 +459,6 @@
 		color: inherit;
 	}
 
-	/* ─── Scatter panel caption ──────────────────────────── */
 	.scatter-cap {
 		margin: 0;
 		font-size: 0.78rem;
@@ -468,7 +472,6 @@
 		color: inherit;
 	}
 
-	/* ─── Controls row (play + noise slider) ─────────────── */
 	.controls-row {
 		display: flex;
 		align-items: center;
@@ -493,7 +496,6 @@
 		border-color: #f97316;
 	}
 
-	/* ─── Slider group title (inside SliderGrid) ─────────── */
 	.grp {
 		display: flex;
 		flex-direction: column;
@@ -507,7 +509,6 @@
 		color: var(--color-text-muted);
 	}
 
-	/* ─── Caption with formula ───────────────────────────── */
 	.cap {
 		margin: 0;
 		font-size: 0.82rem;
@@ -515,8 +516,6 @@
 		color: var(--color-text-muted);
 		text-align: justify;
 	}
-
-	/* .cap inherits color naturally — no explicit strong rule needed */
 
 	@media (max-width: 540px) {
 		.metrics {

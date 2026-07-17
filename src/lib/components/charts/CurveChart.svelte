@@ -328,6 +328,7 @@
 <style>
 	.chart-wrapper {
 		width: 100%;
+		overflow: hidden;
 	}
 
 	svg {

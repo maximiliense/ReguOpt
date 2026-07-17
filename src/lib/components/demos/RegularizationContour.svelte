@@ -3,109 +3,211 @@
 	import Figure from '$lib/components/charts/Figure.svelte';
 	import SliderGrid from '$lib/components/layout/SliderGrid.svelte';
 	import Slider from '$lib/components/controls/Slider.svelte';
-	import KatexInline from '$lib/components/narrative/KatexInline.svelte';
 
-	// Controls
+	type Penalty = 'l1' | 'l2' | 'elastic-net';
+
+	/* ------------------------------------------------------------------ */
+	/* State                                                               */
+	/* ------------------------------------------------------------------ */
+
 	let constraintRadius = $state(2.5);
-	let penaltyType = $state('l1'); // 'l1' | 'l2' | 'elastic-net'
-	let l1Ratio = $state(0.5); // for elastic net blend
+	let penaltyType = $state<Penalty>('l1');
+	let l1Ratio = $state(0.5);
 
-	// OLS solution (center of MSE bowl)
-	const olsW1 = 3.0,
-		olsW2 = 2.5;
+	/* ------------------------------------------------------------------ */
+	/* Problem definition                                                  */
+	/* ------------------------------------------------------------------ */
 
-	// Projection functions matching ContourPlot's internal layout
-	const chartWidth = 400,
-		chartHeight = 350;
+	const ols = {
+		x: 1,
+		y: 2.5
+	};
+
+	const chartWidth = 400;
+	const chartHeight = 350;
 	const pad = 36;
+
 	const xDomain: [number, number] = [-5, 5];
 	const yDomain: [number, number] = [-5, 5];
-
 	const domain: [[number, number], [number, number]] = [xDomain, yDomain];
 
+	/* ------------------------------------------------------------------ */
+	/* Coordinate projection                                               */
+	/* ------------------------------------------------------------------ */
+
 	function projX(x: number) {
-		return pad + ((x - xDomain[0]) / (xDomain[1] - xDomain[0])) * (chartWidth - pad * 2);
+		return pad + ((x - xDomain[0]) / (xDomain[1] - xDomain[0])) * (chartWidth - 2 * pad);
 	}
+
 	function projY(y: number) {
-		return pad + ((yDomain[1] - y) / (yDomain[1] - yDomain[0])) * (chartHeight - pad * 2);
+		return pad + ((yDomain[1] - y) / (yDomain[1] - yDomain[0])) * (chartHeight - 2 * pad);
 	}
 
-	// MSE landscape: elliptical bowl centered at OLS solution
+	/* ------------------------------------------------------------------ */
+	/* Quadratic loss                                                     */
+	/* ------------------------------------------------------------------ */
+
 	function mse(w1: number, w2: number) {
-		const dw1 = w1 - olsW1,
-			dw2 = w2 - olsW2;
-		return (dw1 * dw1 + 0.6 * dw1 * dw2 + dw2 * dw2) / 2;
+		const dx = w1 - ols.x;
+		const dy = w2 - ols.y;
+
+		return (dx * dx + 0.6 * dx * dy + dy * dy) / 2;
 	}
 
-	// Compute contact point between constraint and MSE contours
-	const solutionPoint = $derived.by(() => {
-		if (penaltyType === 'l2') {
-			const t = constraintRadius / Math.sqrt(olsW1 * olsW1 + olsW2 * olsW2);
-			return { x: olsW1 * t, y: olsW2 * t };
-		} else if (penaltyType === 'l1') {
-			const r = constraintRadius;
-			return Math.abs(olsW1) > Math.abs(olsW2)
-				? { x: Math.sign(olsW1) * r, y: 0 }
-				: { x: 0, y: Math.sign(olsW2) * r };
-		} else {
-			const l1Sol =
-				Math.abs(olsW1) > Math.abs(olsW2)
-					? { x: Math.sign(olsW1) * constraintRadius, y: 0 }
-					: { x: 0, y: Math.sign(olsW2) * constraintRadius };
-			const t = constraintRadius / Math.sqrt(olsW1 * olsW1 + olsW2 * olsW2);
-			const l2Sol = { x: olsW1 * t, y: olsW2 * t };
+	/* ------------------------------------------------------------------ */
+	/* Constraint norms                                                   */
+	/* ------------------------------------------------------------------ */
+
+	function l1Norm(x: number, y: number) {
+		return Math.abs(x) + Math.abs(y);
+	}
+
+	function l2Norm(x: number, y: number) {
+		return Math.hypot(x, y);
+	}
+
+	function elasticNorm(x: number, y: number, alpha: number) {
+		return alpha * l1Norm(x, y) + (1 - alpha) * l2Norm(x, y);
+	}
+
+	function isFeasible(x: number, y: number) {
+		switch (penaltyType) {
+			case 'l1':
+				return l1Norm(x, y) <= constraintRadius;
+
+			case 'l2':
+				return l2Norm(x, y) <= constraintRadius;
+
+			case 'elastic-net':
+				return elasticNorm(x, y, l1Ratio) <= constraintRadius;
+		}
+	}
+
+	/* ------------------------------------------------------------------ */
+	/* Boundary parameterisation                                          */
+	/* ------------------------------------------------------------------ */
+
+	function boundaryPoint(theta: number, radius: number, type: Penalty, alpha = 0.5) {
+		const c = Math.cos(theta);
+		const s = Math.sin(theta);
+
+		if (type === 'l2') {
 			return {
-				x: l1Ratio * l1Sol.x + (1 - l1Ratio) * l2Sol.x,
-				y: l1Ratio * l1Sol.y + (1 - l1Ratio) * l2Sol.y
+				x: radius * c,
+				y: radius * s
 			};
 		}
-	});
 
-	// Constraint shape dimensions for SVG rendering
-	const constraintRadiusPx = $derived(
-		(constraintRadius / (xDomain[1] - xDomain[0])) * (chartWidth - pad * 2)
+		if (type === 'l1') {
+			const scale = radius / (Math.abs(c) + Math.abs(s) || 1e-12);
+
+			return {
+				x: scale * c,
+				y: scale * s
+			};
+		}
+
+		const denom = alpha * (Math.abs(c) + Math.abs(s)) + (1 - alpha);
+
+		const scale = radius / (denom || 1e-12);
+
+		return {
+			x: scale * c,
+			y: scale * s
+		};
+	}
+
+	/* ------------------------------------------------------------------ */
+	/* Constrained optimum                                                */
+	/* ------------------------------------------------------------------ */
+
+	const SCAN_STEPS = 2000;
+
+	function solveConstrained() {
+		//
+		// If OLS is feasible, it is the exact optimum.
+		//
+		if (isFeasible(ols.x, ols.y)) {
+			return { ...ols };
+		}
+
+		//
+		// Otherwise the optimum lies on the boundary.
+		//
+		let best = boundaryPoint(0, constraintRadius, penaltyType, l1Ratio);
+
+		let bestLoss = mse(best.x, best.y);
+
+		for (let i = 1; i < SCAN_STEPS; i++) {
+			const theta = (2 * Math.PI * i) / SCAN_STEPS;
+
+			const p = boundaryPoint(theta, constraintRadius, penaltyType, l1Ratio);
+
+			const loss = mse(p.x, p.y);
+
+			if (loss < bestLoss) {
+				bestLoss = loss;
+				best = p;
+			}
+		}
+
+		return best;
+	}
+
+	const solutionPoint = $derived(solveConstrained());
+
+	/* ------------------------------------------------------------------ */
+	/* Sparsity                                                           */
+	/* ------------------------------------------------------------------ */
+
+	const SPARSITY_EPS = 0.02;
+
+	const isSparse = $derived(
+		Math.abs(solutionPoint.x) < SPARSITY_EPS || Math.abs(solutionPoint.y) < SPARSITY_EPS
 	);
 
-	const l1Points = $derived.by(() => {
-		const pts = [
+	/* ------------------------------------------------------------------ */
+	/* SVG geometry                                                       */
+	/* ------------------------------------------------------------------ */
+
+	const constraintRadiusPx = $derived(
+		(constraintRadius / (xDomain[1] - xDomain[0])) * (chartWidth - 2 * pad)
+	);
+
+	const l1Points = $derived.by(() =>
+		[
 			`${projX(0)},${projY(constraintRadius)}`,
 			`${projX(constraintRadius)},${projY(0)}`,
 			`${projX(0)},${projY(-constraintRadius)}`,
 			`${projX(-constraintRadius)},${projY(0)}`
-		];
-		return pts.join(' ');
-	});
+		].join(' ')
+	);
 
 	const elasticNetPoints = $derived.by(() => {
-		const r = constraintRadius;
-		const alpha = l1Ratio;
-		const pts = Array.from({ length: 20 }, (_, i) => {
-			const angle = (2 * Math.PI * i) / 20;
-			const cosA = Math.cos(angle),
-				sinA = Math.sin(angle);
-			const l1Norm = Math.abs(cosA) + Math.abs(sinA);
-			const scale =
-				r / (alpha * l1Norm + (1 - alpha) * Math.sqrt(cosA * cosA + sinA * sinA) || 1e-10);
-			return `${projX(scale * cosA)},${projY(scale * sinA)}`;
-		});
+		const pts: string[] = [];
+
+		for (let i = 0; i < 180; i++) {
+			const theta = (2 * Math.PI * i) / 180;
+			const p = boundaryPoint(theta, constraintRadius, 'elastic-net', l1Ratio);
+
+			pts.push(`${projX(p.x)},${projY(p.y)}`);
+		}
+
 		return pts.join(' ');
 	});
 
-	// Markers for the plot
-	const markers = $derived([
-		{ x: olsW1, y: olsW2 },
-		{ x: solutionPoint.x, y: solutionPoint.y }
-	]);
+	const markers = $derived([ols, solutionPoint]);
 
-	// Penalty type labels for toggle buttons
+	/* ------------------------------------------------------------------ */
+
 	const types = [
-		{ key: 'l2' as const, label: 'Ridge (L2)' },
-		{ key: 'l1' as const, label: 'Lasso (L1)' },
-		{ key: 'elastic-net' as const, label: 'Elastic Net' }
-	];
+		{ key: 'l2', label: 'Ridge (L2)' },
+		{ key: 'l1', label: 'Lasso (L1)' },
+		{ key: 'elastic-net', label: 'Elastic Net' }
+	] as const;
 
-	function setType(t: 'l1' | 'l2' | 'elastic-net') {
-		penaltyType = t;
+	function setType(type: Penalty) {
+		penaltyType = type;
 	}
 </script>
 
@@ -119,12 +221,11 @@
 				height={chartHeight}
 				numLevels={12}
 				showAxes={true}
-				{markers}
 			/>
 		</Figure>
 
-		<!-- SVG overlay for constraint shape -->
 		<svg class="overlay" width={chartWidth} height={chartHeight}>
+			<!-- Constraint geometry -->
 			{#if penaltyType === 'l2'}
 				<circle
 					cx={projX(0)}
@@ -140,24 +241,27 @@
 				<polygon points={elasticNetPoints} fill="none" stroke="#f59e0b" stroke-width="3" />
 			{/if}
 
-			<!-- OLS marker (red) -->
+			<!-- OLS point -->
 			<circle
-				cx={projX(olsW1)}
-				cy={projY(olsW2)}
+				cx={projX(ols.x)}
+				cy={projY(ols.y)}
 				r="7"
 				fill="#ef4444"
 				stroke="white"
 				stroke-width="2"
 			/>
+
 			<text
-				x={projX(olsW1)}
-				y={projY(olsW2) - 12}
+				x={projX(ols.x)}
+				y={projY(ols.y) - 12}
 				text-anchor="middle"
 				fill="#ef4444"
-				font-size="11">OLS</text
+				font-size="11"
 			>
+				OLS
+			</text>
 
-			<!-- Regularized solution marker (green) -->
+			<!-- Constrained solution -->
 			<circle
 				cx={projX(solutionPoint.x)}
 				cy={projY(solutionPoint.y)}
@@ -166,15 +270,18 @@
 				stroke="white"
 				stroke-width="2"
 			/>
+
 			<text
 				x={projX(solutionPoint.x)}
 				y={projY(solutionPoint.y) - 12}
 				text-anchor="middle"
 				fill="#22c55e"
-				font-size="11">Solution</text
+				font-size="11"
 			>
+				Solution
+			</text>
 
-			<!-- Zero lines (dashed, showing axes where coefficients = 0) -->
+			<!-- Reference axes -->
 			<line
 				x1={projX(0)}
 				y1={pad}
@@ -184,6 +291,7 @@
 				stroke-width="1"
 				stroke-dasharray="4 3"
 			/>
+
 			<line
 				x1={pad}
 				y1={projY(0)}
@@ -196,49 +304,56 @@
 		</svg>
 	</div>
 
-	<!-- Penalty type toggle -->
+	<!-- Penalty selector -->
 	<div class="toggle-group">
 		{#each types as t (t.key)}
-			<button class="type-btn" class:active={penaltyType === t.key} onclick={() => setType(t.key)}
-				>{t.label}</button
-			>
+			<button class="type-btn" class:active={penaltyType === t.key} onclick={() => setType(t.key)}>
+				{t.label}
+			</button>
 		{/each}
 	</div>
 
-	<!-- Elastic net blend slider (only visible when elastic-net selected) -->
+	<!-- Elastic net mixing parameter -->
 	{#if penaltyType === 'elastic-net'}
 		<SliderGrid variant="outline">
 			<div class="grp">
 				<div class="gttl">Mélange Elastic Net</div>
+
 				<Slider bind:value={l1Ratio} min={0} max={1} step={0.05} label="α (mix L1/L2)" />
 			</div>
 		</SliderGrid>
 	{/if}
 
-	<!-- Constraint radius slider -->
+	<!-- Constraint size -->
 	<SliderGrid variant="outline">
 		<div class="grp">
 			<div class="gttl">Force de régularisation</div>
-			<Slider bind:value={constraintRadius} min={0.5} max={5} step={0.1} label="Rayon contrainte" />
+
+			<Slider bind:value={constraintRadius} min={0.5} max={6} step={0.1} label="Rayon contrainte" />
 		</div>
 	</SliderGrid>
 
-	<!-- Solution values panel -->
+	<!-- Solution information -->
 	<div class="solution-panel">
-		<span class="sol-label">Solution régulière:</span>
-		<span class="sol-value"
-			>w₁ ≈ {solutionPoint.x.toFixed(3)}, w₂ ≈ {solutionPoint.y.toFixed(3)}</span
-		>
-		{#if solutionPoint.x === 0 || solutionPoint.y === 0}
-			<span class="sparsity-badge">✓ Sparse (un coefficient = 0)</span>
+		<span class="sol-label"> Solution régulière: </span>
+
+		<span class="sol-value">
+			w₁ ≈ {solutionPoint.x.toFixed(3)}, w₂ ≈ {solutionPoint.y.toFixed(3)}
+		</span>
+
+		{#if isSparse}
+			<span class="sparsity-badge"> ✓ Sparse (un coefficient ≈ 0) </span>
 		{/if}
 	</div>
 
 	<p class="cap">
-		La régularisation restreint les coefficients dans une zone de contrainte. Avec le
-		<strong>Lasso (L1)</strong>, la forme diamantée touche souvent les axes → coefficients
-		exactement nuls (<KatexInline formula="w_i = 0" />). Avec le
-		<strong>Ridge (L2)</strong>, le cercle glisse sur des bords lisses → rétrécissement sans zéro.
+		La régularisation limite l'espace disponible pour les coefficients. Si la zone de contrainte
+		contient la solution OLS, la solution reste inchangée. Lorsque la contrainte devient trop
+		restrictive, la solution se déplace sur la frontière de la zone autorisée. Le
+		<strong>Lasso (L1)</strong> possède des coins qui peuvent attirer la solution vers un axe et
+		produire un coefficient nul. Le
+		<strong>Ridge (L2)</strong>, avec sa frontière circulaire, produit un rétrécissement continu
+		sans favoriser exactement les zéros.
 	</p>
 </div>
 

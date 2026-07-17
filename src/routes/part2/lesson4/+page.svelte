@@ -232,7 +232,7 @@
 
 		<p>
 			Si on exprime le problème dans la base des vecteurs propres de <KatexInline
-				formula={'X^T X'}
+				formula={String.raw`X^\top X`}
 			/> avec valeurs propres
 			<KatexInline formula={'d_1 \\geq d_2 \\geq \\dots \\geq d_p > 0'} />, chaque direction est
 			affectée indépendamment par un facteur de rétrécissement :
@@ -495,10 +495,6 @@
 			une marge statistiquement acceptable de performance. C'est un compromis classique entre simplicité
 			du modèle et précision.
 		</p>
-
-		<InteractiveSection tag="Démo 8.6 — Sélecteur par validation croisée">
-			<CrossValidationSelector />
-		</InteractiveSection>
 
 		<Callout type="warning" title="Le piège du surajustement de λ">
 			<p>

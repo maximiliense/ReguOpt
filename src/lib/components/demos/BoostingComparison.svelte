@@ -777,7 +777,7 @@
 				<!-- AdaBoost metrics -->
 				<div class="metrics-col">
 					<div class="metric-row">
-						<span class="metric-lbl">Erreur \u03b5\u209a pondérée</span>
+						<span class="metric-lbl">Erreur εₚ pondérée</span>
 						{#if adaCurrentError !== null}
 							<span
 								class="metric-val"
@@ -785,15 +785,15 @@
 								>{(adaCurrentError * 100).toFixed(1)}%</span
 							>
 						{:else}
-							<span class="metric-val metric-empty">\u2014</span>
+							<span class="metric-val metric-empty">–</span>
 						{/if}
 					</div>
 					<div class="metric-row">
-						<span class="metric-lbl">Poids \u03b1\u209a du modèle</span>
+						<span class="metric-lbl">Poids αₚ du modèle</span>
 						{#if adaCurrentAlpha !== null}
 							<span class="metric-val">{adaCurrentAlpha.toFixed(4)}</span>
 						{:else}
-							<span class="metric-val metric-empty">\u2014</span>
+							<span class="metric-val metric-empty">–</span>
 						{/if}
 					</div>
 					<div class="metric-row">
@@ -808,7 +808,7 @@
 										: '#ef4444'}>{(adaCumulativeError * 100).toFixed(1)}%</span
 							>
 						{:else}
-							<span class="metric-val metric-empty">\u2014</span>
+							<span class="metric-val metric-empty">–</span>
 						{/if}
 					</div>
 					<div class="metric-row stump-row">
@@ -918,15 +918,15 @@
 										: '#ef4444'}>{(gbCurrentError * 100).toFixed(1)}%</span
 							>
 						{:else}
-							<span class="metric-val metric-empty">\u2014</span>
+							<span class="metric-val metric-empty">–</span>
 						{/if}
 					</div>
 					<div class="metric-row">
-						<span class="metric-lbl">Somme des r\u00e9sidus carr\u00e9s</span>
+						<span class="metric-lbl">Somme des résidus carrés</span>
 						{#if gbCurrentResidualSum !== null}
 							<span class="metric-val">{gbCurrentResidualSum.toFixed(2)}</span>
 						{:else}
-							<span class="metric-val metric-empty">\u2014</span>
+							<span class="metric-val metric-empty">–</span>
 						{/if}
 					</div>
 					<div class="metric-row">
@@ -941,7 +941,7 @@
 		<div class="convergence-wrap">
 			<LineChart
 				series={convergenceSeries}
-				xLabel="\u00c9tape"
+				xLabel="Étape"
 				yLabel="Erreur d'entraînement (%)"
 				width={chartWidth}
 				height={160}
@@ -967,9 +967,9 @@
 							: ''}
 					>
 						AdaBoost : {(adaCumulativeError ?? -1).toFixed(1)}% {adaCumulativeError === null
-							? '\u2014'
+							? '–'
 							: adaCumulativeError < (gbCurrentError ?? Infinity)
-								? '\u2713'
+								? '✓'
 								: ''}
 					</span>
 					<span
@@ -980,9 +980,9 @@
 							: ''}
 					>
 						GB : {(gbCurrentError ?? -1).toFixed(1)}% {gbCurrentError === null
-							? '\u2014'
+							? '–'
 							: gbCurrentError < (adaCumulativeError ?? Infinity)
-								? '\u2713'
+								? '✓'
 								: ''}
 					</span>
 				</div>
@@ -991,21 +991,15 @@
 
 		<!-- Controls -->
 		<div class="controls-panel">
-			<Slider
-				bind:value={currentStep}
-				min={0}
-				max={numModels}
-				step={1}
-				label="\u00c9tape (partag\u00e9e)"
-			/>
+			<Slider bind:value={currentStep} min={0} max={numModels} step={1} label="Étape (partagée)" />
 
 			<div class="button-row">
-				<Button variant="ghost" size="sm" onclick={reset}>⟲ R\u00e9initialiser</Button>
+				<Button variant="ghost" size="sm" onclick={reset}>⟲ Réinitialiser</Button>
 				<Button
 					variant="ghost"
 					size="sm"
 					onclick={stepBackward}
-					disabled={currentStep <= 0 || numModels === 0}>← Pr\u00e9c.</Button
+					disabled={currentStep <= 0 || numModels === 0}>← Préc.</Button
 				>
 				<Button variant="primary" size="sm" onclick={togglePlay} disabled={numModels === 0}>
 					{isPlaying ? '⏸ Pause' : '▶ Lecture'}
@@ -1019,24 +1013,23 @@
 			</div>
 
 			<div class="sliders-row">
-				<Slider bind:value={maxIterations} min={1} max={40} step={1} label="Max it\u00e9rations" />
+				<Slider bind:value={maxIterations} min={1} max={40} step={1} label="Max itérations" />
 				<Slider bind:value={noiseLevel} min={0} max={0.5} step={0.01} label="Niveau de bruit" />
 			</div>
 
 			<div class="button-row">
 				<Button variant="outline" size="sm" onclick={regenerate}
-					>↻ R\u00e9g\u00e9n\u00e9rer les donn\u00e9es ({getDatasetLabel(datasetType)})</Button
+					>↻ Régénérer les données ({getDatasetLabel(datasetType)})</Button
 				>
 			</div>
 		</div>
 
 		<!-- Educational caption -->
 		<p class="caption-note">
-			<strong>P\u00e9dagogie :</strong> AdaBoost ajuste it\u00e9rativement les poids des exemples mal
-			classifi\u00e9s, tandis que Gradient Boosting descend le long du gradient d'une fonction de perte.
-			Les deux approches produisent des front\u00e8res de d\u00e9cision de plus en plus fines, mais avec
-			des dynamiques de convergence diff\u00e9rentes — particuli\u00e8rement visibles sur les donn\u00e9es
-			bruyantes.
+			<strong>Pédagogie :</strong> AdaBoost ajuste itérativement les poids des exemples mal classifiés,
+			tandis que Gradient Boosting descend le long du gradient d'une fonction de perte. Les deux approches
+			produisent des frontères de décision de plus en plus fines, mais avec des dynamiques de convergence
+			différentes — particulièrement visibles sur les données bruyantes.
 		</p>
 	</div>
 </Figure>
