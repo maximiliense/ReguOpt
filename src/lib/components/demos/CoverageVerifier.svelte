@@ -161,15 +161,20 @@
 	const histBarW = $derived(Math.min(histSlotW * 0.55, 50));
 
 	// ─── Layout helpers ─────────────────────────────────────────
+	// scatterX/scatterY seed their jitter PRNGs with DIFFERENT formulas (offset by a
+	// large odd constant) so the two axes draw different pseudorandom values for the
+	// same point index i. Previously both used the identical seed `i * 31 + 99`, so a
+	// fresh mulberry32 instance in each function produced the same first draw — the x
+	// and y jitter offsets were always numerically equal, and every point got pushed
+	// along the same diagonal within its cell instead of spreading in two dimensions.
 	function scatterX(i: number): number {
-		// Pseudo-random but deterministic jitter for visual spread
 		const jitterRng = mulberry32(i * 31 + 99);
 		const cellW = sPlotW / 10;
 		return SCATTER_PAD.left + (i % 10) * cellW + cellW / 2 + (jitterRng() - 0.5) * cellW * 0.6;
 	}
 
 	function scatterY(i: number): number {
-		const jitterRng = mulberry32(i * 31 + 99);
+		const jitterRng = mulberry32(i * 53 + 271);
 		const cellH = sPlotH / 10;
 		return (
 			SCATTER_PAD.top + Math.floor(i / 10) * cellH + cellH / 2 + (jitterRng() - 0.5) * cellH * 0.6

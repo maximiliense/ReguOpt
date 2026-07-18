@@ -10,7 +10,6 @@
 	import KatexInline from '$lib/components/narrative/KatexInline.svelte';
 	import ConformalPredictionDemo from '$lib/components/demos/ConformalPredictionDemo.svelte';
 	import ConformityScoreComparison from '$lib/components/demos/ConformityScoreComparison.svelte';
-	import CoverageVerifier from '$lib/components/demos/CoverageVerifier.svelte';
 	import QuantileThresholdVisualizer from '$lib/components/demos/QuantileThresholdVisualizer.svelte';
 	import { getPageByPath, getNextPage, getPrevPage, type PageMeta } from '$lib/navigation.js';
 	import { createPageTracker } from '$lib/stores/progress.svelte';
@@ -24,22 +23,35 @@
 		tracker.trackInteraction();
 	});
 
-	// ─── Formula constants (avoid Svelte brace-parsing issues) ───
-	const F_SCORE_DEF = String.raw`s: \mathcal\{X\} \times \mathcal\{Y\} \to \mathbb\{R\}`;
-	const F_DTRAIN = String.raw`\mathcal\{D\}_\text\{train\}`;
-	const F_DCAL = String.raw`\mathcal\{D\}_\text\{cal\} = \{(X_i, Y_i)\}_{i=1}^n`;
-	const F_HAT_F = String.raw`\hat\{f\}`;
-	const F_SI = String.raw`S_i = s(X_i, Y_i) \quad \text\{pour \} i = 1, \dots, n`;
-	const F_PRED_SET = String.raw`\mathcal\{C\}(x) = \big\{ y \in \mathcal\{Y\} \;:\; s(x, y) \leq \hat\{q\} \big\}`;
-	const F_HAT_Q = String.raw`\hat\{q\}`;
+	// ─── Formula constants ─────────────────────────────
+	// NOTE: curly braces here do NOT need backslash-escaping. Svelte's brace-parsing only
+	// applies inside markup, never inside <script> blocks — these are plain JS template
+	// strings. `\{` / `\}` in KaTeX renders a literal brace *glyph*; it does not open/close
+	// a TeX group. Escaping the grouping braces of \mathcal{}, \text{}, \hat{}, \mathbb{}
+	// broke every one of these formulas (e.g. \mathcal\{X\} does NOT pass X to \mathcal).
+	// Braces are only escaped below where a literal { } glyph is genuinely intended
+	// (set-builder notation, \big\{ ... \big\}).
+	const F_SCORE_DEF = String.raw`s: \mathcal{X} \times \mathcal{Y} \to \mathbb{R}`;
+	const F_DTRAIN = String.raw`\mathcal{D}_{\text{train}}`;
+	const F_DCAL = String.raw`\mathcal{D}_{\text{cal}} = \{(X_i, Y_i)\}_{i=1}^n`;
+	const F_HAT_F = String.raw`\hat{f}`;
+	const F_SI = String.raw`S_i = s(X_i, Y_i) \quad \text{pour } i = 1, \dots, n`;
+	const F_PRED_SET = String.raw`\mathcal{C}(x) = \big\{ y \in \mathcal{Y} \;:\; s(x, y) \leq \hat{q} \big\}`;
+	const F_HAT_Q = String.raw`\hat{q}`;
 	const F_K_INDEX = String.raw`\lceil (n+1)(1-\alpha) \rceil`;
 	const F_SCORES = String.raw`\{S_i\}`;
 	const F_EXCH_DATA = String.raw`(X_1, Y_1), \dots, (X_n, Y_n), (X, Y)`;
-	const F_COVERAGE_THEOREM = String.raw`\mathbb\{P\}\big(Y \in \mathcal\{C\}(X)\big) \geq 1 - \alpha`;
-	const F_RANK_SCORE = String.raw`s(x, y) = \text\{rang de \} y \text\{ parmi les classes, triées par \} \hat\{p\} \text\{ décroissant\}`;
-	const F_1MINUSP = String.raw`s(x, y) = 1 - \hat\{p\}_y(x)`;
-	const F_CUMULATIVE = String.raw`s(x, y) = 1 - \sum_{j : \hat\{p\}_j(x) \geq \hat\{p\}_y(x)} \hat\{p\}_j(x)`;
-	const F_QUANTILE_BLOCK = String.raw`\hat\{q\} = \text\{sorted_scores\}\big[\, \lceil (n+1)(1-\alpha) \rceil - 1 \,\big]`;
+	const F_COVERAGE_THEOREM = String.raw`\mathbb{P}\big(Y \in \mathcal{C}(X)\big) \geq 1 - \alpha`;
+	const F_COVERAGE_UPPER = String.raw`1 - \alpha \;\leq\; \mathbb{P}\big(Y \in \mathcal{C}(X)\big) \;\leq\; 1 - \alpha + \frac{1}{n+1}`;
+	const F_RANK_SCORE = String.raw`s(x, y) = \text{rang de } y \text{ parmi les classes, triées par } \hat{p} \text{ décroissant}`;
+	const F_1MINUSP = String.raw`s(x, y) = 1 - \hat{p}_y(x)`;
+	const F_CUMULATIVE = String.raw`s(x, y) = 1 - \sum_{j \,:\, \hat{p}_j(x) \geq \hat{p}_y(x)} \hat{p}_j(x)`;
+	const F_QUANTILE_BLOCK = String.raw`\hat{q} = \text{sorted\_scores}\big[\, \lceil (n+1)(1-\alpha) \rceil - 1 \,\big]`;
+	const F_ETA = String.raw`\eta_c(x) = \mathbb{P}(Y = c \mid X = x)`;
+	const F_ORACLE_SCORE = String.raw`s^*(x, y) = 1 - \eta_y(x)`;
+	const F_ORACLE_SET = String.raw`\mathcal{C}^*(x) = \{\, y \;:\; \eta_y(x) \geq t^* \,\}`;
+	const F_ORACLE_COVERAGE = String.raw`\mathbb{P}\big(\eta_Y(X) \geq t^*\big) = 1 - \alpha`;
+	const F_TOPK_DUAL = String.raw`\underbrace{\max_{|S|=K} \sum_{c \in S} \eta_c(x)}_{\text{Top-}K} \qquad \longleftrightarrow \qquad \underbrace{\min_{S \,:\, \sum_{c \in S} \eta_c(x) \geq 1-\alpha} |S|}_{\text{ensemble conforme oracle}}`;
 </script>
 
 <svelte:head>
@@ -132,18 +144,33 @@
 			des observations.
 		</p>
 
+		<p>
+			La borne inférieure n'est pas la seule information disponible : lorsque les scores
+			<KatexInline formula={F_SCORES} /> sont presque sûrement distincts (typique avec des scores continus),
+			la couverture est en fait <strong>encadrée</strong>, et pas seulement minorée :
+		</p>
+
+		<KatexBlock formula={F_COVERAGE_UPPER} />
+
+		<p>
+			Autrement dit, la méthode n'est pas seulement valide, elle est aussi <em>presque serrée</em> —
+			elle ne sur-couvre pas de façon incontrôlée, à un terme en
+			<KatexInline formula={String.raw`1/(n+1)`} /> près qui s'annule quand l'ensemble de calibration
+			grandit.
+		</p>
+
 		<Callout type="intuition" title="Quand l'échangeabilité tient-elle ?">
 			Les données i.i.d. sont toujours échangeables. L'échangeabilité est également satisfaite dans
 			certains cas de séries temporelles (permutation sans changement de distribution) ou pour des
 			échantillons provenant de la même population. En pratique, on considère souvent l'hypothèse
-			satisfied si les données de calibration et de test proviennent d'une même distribution.
+			satisfaite si les données de calibration et de test proviennent d'une même distribution.
 		</Callout>
 	</TheorySection>
 
 	<!-- ═══════════ Démo 10.3 — Vérification de la couverture ═══════════ -->
-	<InteractiveSection tag="Démo 10.3">
+	<!-- <InteractiveSection tag="Démo 10.3">
 		<CoverageVerifier />
-	</InteractiveSection>
+	</InteractiveSection> -->
 
 	<!-- ═══════════ Score de rang ═══════════ -->
 	<TheorySection>
@@ -160,15 +187,79 @@
 			Avec ce score, la prédiction conformelle redonne exactement le <strong>Top-K validé</strong>
 			de la leçon précédente. Si <KatexInline formula={F_HAT_Q} /> est le quantile choisi, alors
 			<KatexInline formula={F_PRED_SET} /> contient les classes de rang
-			<KatexInline formula={String.raw`\leq \hat\{q\}`} />.
+			<KatexInline formula={String.raw`\leq \hat{q}`} />.
 		</Callout>
 
 		<p>
 			Ce score produit des ensembles discrets : la taille de
-			<KatexInline formula={String.raw`\mathcal\{C\}(x)`} /> est un entier entre 1 et le nombre de classes.
+			<KatexInline formula={String.raw`\mathcal{C}(x)`} /> est un entier entre 1 et le nombre de classes.
 			Il est particulièrement simple à interpréter mais peut être trop grossier quand les probabilités
 			prédites contiennent plus d'information que le seul ordre.
 		</p>
+	</TheorySection>
+
+	<!-- ═══════════ Le prédicteur oracle : lien avec η(x) ═══════════ -->
+	<TheorySection>
+		<h2>Le prédicteur oracle et le dual du Top-K</h2>
+
+		<p>
+			On peut pousser le lien avec la leçon précédente jusqu'à sa forme la plus nette en se
+			demandant : que ferait la prédiction conformelle si l'on connaissait la vraie probabilité
+			conditionnelle <KatexInline formula={F_ETA} /> plutôt qu'une estimation
+			<KatexInline formula={String.raw`\hat{p}`} /> ? C'est le régime <strong>oracle</strong> — la version
+			population de la méthode, sans bruit d'estimation.
+		</p>
+
+		<p>
+			Avec le score <KatexInline formula={F_ORACLE_SCORE} />, le seuil de calibration devient un
+			seuil de probabilité <KatexInline formula="t^*" /> choisi pour que la masse
+			<KatexInline formula={F_ORACLE_COVERAGE} /> exactement, et l'ensemble de prédiction oracle est un
+			<strong>ensemble de niveau</strong>
+			de <KatexInline formula={String.raw`\eta`} /> :
+		</p>
+
+		<KatexBlock formula={F_ORACLE_SET} />
+
+		<Callout type="insight" title="Optimalité de l'ensemble de niveau">
+			Sadinle, Lei &amp; Wasserman (2019) montrent que <KatexInline
+				formula={String.raw`\mathcal{C}^*(x)`}
+			/>
+			n'est pas seulement valide : parmi <em>tous</em> les ensembles atteignant une couverture
+			marginale d'au moins <KatexInline formula={String.raw`1-\alpha`} />, c'est celui qui
+			<strong>minimise la taille moyenne</strong>
+			<KatexInline formula={String.raw`\mathbb{E}[|\mathcal{C}(X)|]`} />. C'est l'exact pendant,
+			côté couverture fixée, du résultat de la leçon précédente sur le Top-K à cardinalité fixée.
+		</Callout>
+
+		<p>
+			Les deux problèmes sont en réalité <strong>duaux</strong> l'un de l'autre : le Top-K fixe la
+			taille <KatexInline formula="K" /> et maximise la masse de probabilité captée ; l'ensemble conforme
+			oracle fixe la masse cible
+			<KatexInline formula={String.raw`1-\alpha`} /> et minimise la taille. Les deux solutions sont des
+			ensembles de niveau de <KatexInline formula={String.raw`\eta(x)`} /> — seule la contrainte active
+			change :
+		</p>
+
+		<KatexBlock formula={F_TOPK_DUAL} />
+
+		<Callout type="warning" title="Validité contre efficacité">
+			Ce régime oracle n'existe qu'en théorie : en pratique on remplace
+			<KatexInline formula={String.raw`\eta`} /> par <KatexInline formula={String.raw`\hat{p}`} />,
+			et le quantile empirique <KatexInline formula={F_HAT_Q} /> remplace le seuil
+			<KatexInline formula="t^*" />. La force de la méthode est que la
+			<strong>garantie de couverture</strong>
+			tient <em>quel que soit</em>
+			<KatexInline formula={String.raw`\hat{p}`} /> — même un modèle médiocre, voire aléatoire — car elle
+			ne dépend que de l'échangeabilité des scores, pas de la qualité de <KatexInline
+				formula={String.raw`\hat{p}`}
+			/>. Ce que la qualité de
+			<KatexInline formula={String.raw`\hat{p}`} /> détermine, c'est uniquement l'<strong
+				>efficacité</strong
+			>
+			— la taille des ensembles obtenus, aussi proche ou non de celle de
+			<KatexInline formula={String.raw`\mathcal{C}^*`} />. Un modèle mal calibré reste
+			<em>valide</em> sous conformalisation, mais produit des ensembles inutilement larges.
+		</Callout>
 	</TheorySection>
 
 	<!-- ═══════════ Scores probabilistes ═══════════ -->
@@ -182,7 +273,8 @@
 
 		<Callout type="definition" title="Score 1-p̂">
 			<KatexInline formula={F_1MINUSP} /> — Plus la probabilité de la vraie classe est élevée, plus le
-			score est faible (plus conforme).
+			score est faible (plus conforme). C'est l'analogue empirique direct du score oracle
+			<KatexInline formula={F_ORACLE_SCORE} /> introduit ci-dessus.
 		</Callout>
 
 		<Callout type="definition" title="Score cumulatif">
@@ -255,32 +347,37 @@
 		<p>
 			Le choix du score influence la taille des ensembles : le score de rang produit des ensembles
 			discrets (Top-K), tandis que les scores probabilistes adaptent la taille à chaque échantillon.
-			La méthode s'étend naturellement à la régression, où elle produit des
+			Dans les deux cas, la structure sous-jacente est la même : un ensemble de niveau de
+			<KatexInline formula={String.raw`\eta(x)`} />, contrainte soit par sa cardinalité (Top-K),
+			soit par sa couverture (conforme). La différence entre les deux leçons n'est donc pas de
+			nature, mais de <em>quelle contrainte on fixe</em> — et la prédiction conformelle a l'avantage
+			de rester valide même quand <KatexInline formula={String.raw`\eta`} /> est mal estimée. La méthode
+			s'étend naturellement à la régression, où elle produit des
 			<strong>intervalles de prédiction</strong> — comme nous le verrons dans la prochaine leçon.
 		</p>
 	</TheorySection>
 
 	<Bibliography>
 		<BibElement
-			authors={['Vovk, V.', 'Gammerman, A.', 'Sawyer, R.']}
+			authors={['Vovk, V.', 'Gammerman, A.', 'Shafer, G.']}
 			year={2005}
 			title="Algorithmic Learning in a Random World"
 			journal="Springer."
-			link="https://www.springer.com/gp/book/9780387259945"
+			link="https://doi.org/10.1007/b106715"
 		/>
 		<BibElement
-			authors={['Sadinle, M.', 'Natekin-Arroyo, T.', 'Barber, R. F.']}
+			authors={['Sadinle, M.', 'Lei, J.', 'Wasserman, L.']}
 			year={2019}
-			title="Lessons from Conformal Prediction"
-			journal="arXiv preprint arXiv:1911.09974."
-			link="https://arxiv.org/abs/1911.09974"
+			title="Least Ambiguous Set-Valued Classifiers With Bounded Error Levels"
+			journal="Journal of the American Statistical Association, 114(525), 223–234."
+			link="https://arxiv.org/abs/1609.00451"
 		/>
 		<BibElement
-			authors={['Romano, Y.', 'Candes, E.', 'Catoni, O.', 'Tsybakov, A.']}
+			authors={['Romano, Y.', 'Sesia, M.', 'Candès, E.']}
 			year={2020}
 			title="Classification with Valid and Adaptive Coverage"
-			journal="International Conference on Learning Representations (ICLR)."
-			link="https://arxiv.org/abs/1905.09108"
+			journal="Advances in Neural Information Processing Systems (NeurIPS)."
+			link="https://arxiv.org/abs/2006.02544"
 		/>
 	</Bibliography>
 </PageTemplate>

@@ -5,569 +5,506 @@
 		conformityScoreCumulative,
 		computeQuantileThreshold
 	} from '$lib/math/conformal';
+
 	import Figure from '$lib/components/charts/Figure.svelte';
 	import SliderGrid from '$lib/components/layout/SliderGrid.svelte';
 	import Slider from '$lib/components/controls/Slider.svelte';
 	import KatexInline from '$lib/components/narrative/KatexInline.svelte';
 
-	// ─── Constants ──────────────────────────────────────────────
+	/* ------------------------------------------------------------ */
+	/* Constants                                                     */
+	/* ------------------------------------------------------------ */
+
 	const NUM_CAL = 50;
+	const NUM_TEST = 24;
 	const NUM_CLASSES = 4;
+
 	const CLASSES = ['A', 'B', 'C', 'D'];
+
 	const CLASS_COLORS = ['#06b6d4', '#f43f5e', '#10b981', '#eab308'];
-	const NUM_TEST = 5;
+
 	const HIST_HEIGHT = 140;
-	const HIST_PAD = { top: 8, right: 8, bottom: 24, left: 28 };
+
+	const HIST_PAD = {
+		top: 8,
+		right: 8,
+		bottom: 24,
+		left: 28
+	};
+
 	const NUM_BINS = 10;
 
-	// ─── Score type definitions ─────────────────────────────────
-	const SCORE_TYPES = [
+	type ScoreDefinition = {
+		id: string;
+		name: string;
+		color: string;
+		formula: string;
+		discrete: boolean;
+		score: (probas: number[], label: number) => number;
+	};
+
+	const SCORE_TYPES: ScoreDefinition[] = [
 		{
+			id: 'rank',
 			name: 'Rang',
-			label: 'Rang',
 			color: '#06b6d4',
-			func: conformityScoreRank,
-			formula: 's(x,y) = \\text{rang}(y)',
-			discrete: true
+			formula: 's(x,y)=\\mathrm{rang}(y)',
+			discrete: true,
+			score: conformityScoreRank
 		},
 		{
+			id: 'prob',
 			name: '1-p̂',
-			label: '1-p̂',
 			color: '#f43f5e',
-			func: conformityScore1MinusProba,
-			formula: 's(x,y) = 1 - \\hat{p}_y',
-			discrete: false
+			formula: 's(x,y)=1-\\hat p_y',
+			discrete: false,
+			score: conformityScore1MinusProba
 		},
 		{
+			id: 'cum',
 			name: 'Cumulatif',
-			label: 'Cumulatif',
 			color: '#10b981',
-			func: conformityScoreCumulative,
-			formula: 's(x,y) = 1 - \\sum_{j:\\hat{p}_j\\geq\\hat{p}_y}\\hat{p}_j',
-			discrete: false
+			formula: 's(x,y)=1-\\sum_{j:\\hat p_j\\ge \\hat p_y}\\hat p_j',
+			discrete: false,
+			score: conformityScoreCumulative
 		}
 	];
 
-	// ─── Seeded PRNG ────────────────────────────────────────────
-	function mulberry32(seed: number): () => number {
-		return function () {
+	/* ------------------------------------------------------------ */
+	/* Seeded RNG                                                    */
+	/* ------------------------------------------------------------ */
+
+	function mulberry32(seed: number) {
+		return () => {
 			seed |= 0;
 			seed = (seed + 0x6d2b79f5) | 0;
+
 			let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+
 			t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+
 			return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 		};
 	}
+
 	const rand = mulberry32(42);
 
-	// ─── Softmax ────────────────────────────────────────────────
+	/* ------------------------------------------------------------ */
+	/* Softmax                                                       */
+	/* ------------------------------------------------------------ */
+
 	function softmax(logits: number[]): number[] {
-		const maxL = Math.max(...logits);
-		const exps = logits.map((l) => Math.exp(l - maxL));
-		const sum = exps.reduce((a, b) => a + b, 0);
-		return exps.map((e) => e / sum);
+		const max = Math.max(...logits);
+
+		const exp = logits.map((v) => Math.exp(v - max));
+
+		const sum = exp.reduce((a, b) => a + b, 0);
+
+		return exp.map((v) => v / sum);
 	}
 
-	// ─── Generate calibration data ──────────────────────────────
-	interface CalPoint {
+	/* ------------------------------------------------------------ */
+	/* Synthetic classifier                                          */
+	/* ------------------------------------------------------------ */
+
+	interface Example {
 		probas: number[];
 		label: number;
 	}
 
-	const calData: CalPoint[] = [];
-	for (let s = 0; s < NUM_CAL; s++) {
-		const trueClass = Math.floor(rand() * NUM_CLASSES);
-		const logits = Array.from({ length: NUM_CLASSES }, (_, c) => {
-			if (c === trueClass) return 1.5 + rand() * 3;
-			return -1 + rand() * 3.5;
-		});
-		if (rand() < 0.2) {
-			const decoy = (trueClass + 1 + Math.floor(rand() * (NUM_CLASSES - 1))) % NUM_CLASSES;
-			logits[decoy] += 2 + rand() * 2;
-		}
-		calData.push({ probas: softmax(logits), label: trueClass });
-	}
+	function generateExample(): Example {
+		const label = Math.floor(rand() * NUM_CLASSES);
 
-	// ─── Generate test data ─────────────────────────────────────
-	const testData: CalPoint[] = [];
-	for (let s = 0; s < NUM_TEST; s++) {
-		const trueClass = Math.floor(rand() * NUM_CLASSES);
-		const logits = Array.from({ length: NUM_CLASSES }, (_, c) => {
-			if (c === trueClass) return 1 + rand() * 2.5;
-			return -0.5 + rand() * 3;
-		});
-		testData.push({ probas: softmax(logits), label: trueClass });
-	}
+		const logits = Array(NUM_CLASSES).fill(0);
 
-	// ─── Reactive state ─────────────────────────────────────────
-	let alpha = $state(0.1);
-	let testIndex = $state(0);
-	let histWidthRank = $state(0);
-	let histWidthOneMinusProba = $state(0);
-	let histWidthCumulative = $state(0);
+		const mode = rand();
 
-	// ─── Compute scores for each type ──────────────────────────
-	// For each score type: compute calibration scores, quantile, prediction set
-
-	// Rank scores
-	const calScoresRank = $derived(calData.map((p) => conformityScoreRank(p.probas, p.label)));
-	const qRank = $derived(computeQuantileThreshold(calScoresRank, alpha));
-
-	// 1-p scores
-	const calScores1MinusProba = $derived(
-		calData.map((p) => conformityScore1MinusProba(p.probas, p.label))
-	);
-	const qOneMinusProba = $derived(computeQuantileThreshold(calScores1MinusProba, alpha));
-
-	// Cumulative scores
-	const calScoresCumulative = $derived(
-		calData.map((p) => conformityScoreCumulative(p.probas, p.label))
-	);
-	const qCumulative = $derived(computeQuantileThreshold(calScoresCumulative, alpha));
-
-	// Current test point
-	const currentTest = $derived(testData[testIndex]);
-
-	// Prediction sets for current test point
-	const predSetRank = $derived(
-		SCORE_TYPES[0].func(currentTest.probas, currentTest.label) <= qRank
-			? buildPredictionSet(currentTest.probas, qRank, SCORE_TYPES[0].func)
-			: buildPredictionSet(currentTest.probas, qRank, SCORE_TYPES[0].func)
-	);
-	const predSetOneMinusProba = $derived(
-		buildPredictionSet(currentTest.probas, qOneMinusProba, SCORE_TYPES[1].func)
-	);
-	const predSetCumulative = $derived(
-		buildPredictionSet(currentTest.probas, qCumulative, SCORE_TYPES[2].func)
-	);
-
-	function buildPredictionSet(
-		testProba: number[],
-		qHat: number,
-		scoreFn: (p: number[], l: number) => number
-	): number[] {
-		const included: number[] = [];
-		for (let j = 0; j < NUM_CLASSES; j++) {
-			if (scoreFn(testProba, j) <= qHat) {
-				included.push(j);
+		/*
+		 * 70%:
+		 * confident prediction
+		 */
+		if (mode < 0.7) {
+			for (let c = 0; c < NUM_CLASSES; c++) {
+				logits[c] = c === label ? 3 + rand() : rand();
 			}
 		}
-		return included;
-	}
 
-	// Coverage across all test points
-	const coverageRank = $derived(
-		testData.filter((p) =>
-			buildPredictionSet(p.probas, qRank, SCORE_TYPES[0].func).includes(p.label)
-		).length
-	);
-	const coverageOneMinusProba = $derived(
-		testData.filter((p) =>
-			buildPredictionSet(p.probas, qOneMinusProba, SCORE_TYPES[1].func).includes(p.label)
-		).length
-	);
-	const coverageCumulative = $derived(
-		testData.filter((p) =>
-			buildPredictionSet(p.probas, qCumulative, SCORE_TYPES[2].func).includes(p.label)
-		).length
-	);
+		/*
+		 * 20%:
+		 * ambiguous prediction
+		 */
+		else if (mode < 0.9) {
+			const rival = (label + 1 + Math.floor(rand() * (NUM_CLASSES - 1))) % NUM_CLASSES;
 
-	// ─── Histogram helpers ──────────────────────────────────────
-	function computeHistogram(
-		scores: number[],
-		isDiscrete: boolean
-	): { bins: number[]; labels: string[]; min: number; max: number } {
-		if (isDiscrete) {
-			// For rank scores, bins are integer values 1..NUM_CLASSES
-			const bins = new Array(NUM_CLASSES).fill(0);
-			scores.forEach((s) => {
-				const idx = Math.min(Math.max(Math.round(s) - 1, 0), NUM_CLASSES - 1);
-				bins[idx]++;
-			});
-			const labels = Array.from({ length: NUM_CLASSES }, (_, idx) => String(idx + 1));
-			return { bins, labels, min: 1, max: NUM_CLASSES };
-		} else {
-			// For continuous scores, use equal-width bins
-			const min = Math.min(...scores);
-			const max = Math.max(...scores);
-			const range = max - min || 1;
-			const binWidth = range / NUM_BINS;
-			const bins = Array.from({ length: NUM_BINS }, () => 0);
-			scores.forEach((s) => {
-				const idx = Math.min(Math.floor((s - min) / binWidth), NUM_BINS - 1);
-				bins[idx]++;
-			});
-			const labels = Array.from({ length: NUM_BINS }, (_, i) => (min + i * binWidth).toFixed(1));
-			return { bins, labels, min, max };
+			for (let c = 0; c < NUM_CLASSES; c++) {
+				if (c === label || c === rival) {
+					logits[c] = 2 + rand();
+				} else {
+					logits[c] = 1.7 + 0.3 * rand();
+				}
+			}
 		}
+
+		/*
+		 * 10%:
+		 * confidently wrong
+		 */
+		else {
+			const wrong = (label + 1 + Math.floor(rand() * (NUM_CLASSES - 1))) % NUM_CLASSES;
+
+			for (let c = 0; c < NUM_CLASSES; c++) {
+				if (c === wrong) {
+					logits[c] = 3 + rand();
+				} else if (c === label) {
+					logits[c] = 1 + rand();
+				} else {
+					logits[c] = rand();
+				}
+			}
+		}
+
+		return {
+			label,
+			probas: softmax(logits)
+		};
 	}
 
-	const histRank = $derived(computeHistogram(calScoresRank, true));
-	const histOneMinusProba = $derived(computeHistogram(calScores1MinusProba, false));
-	const histCumulative = $derived(computeHistogram(calScoresCumulative, false));
+	const calData = Array.from({ length: NUM_CAL }, generateExample);
+
+	const testData = Array.from({ length: NUM_TEST }, generateExample);
+
+	/* ------------------------------------------------------------ */
+	/* UI state                                                      */
+	/* ------------------------------------------------------------ */
+
+	let alpha = $state(0.1);
+	let testIndex = $state(0);
+
+	let widths = $state<number[]>([]);
+
+	/* ------------------------------------------------------------ */
+	/* Generic helpers                                               */
+	/* ------------------------------------------------------------ */
+
+	function buildPredictionSet(
+		probas: number[],
+		qHat: number,
+		scoreFn: (p: number[], y: number) => number
+	) {
+		const set: number[] = [];
+
+		for (let y = 0; y < NUM_CLASSES; y++) {
+			if (scoreFn(probas, y) <= qHat) {
+				set.push(y);
+			}
+		}
+
+		return set;
+	}
+	/* ------------------------------------------------------------ */
+	/* Current test example                                          */
+	/* ------------------------------------------------------------ */
+
+	const currentTest = $derived(testData[testIndex]);
+
+	/* ------------------------------------------------------------ */
+	/* Histogram helper                                              */
+	/* ------------------------------------------------------------ */
+
+	function computeHistogram(scores: number[], discrete: boolean) {
+		if (discrete) {
+			const bins = Array(NUM_CLASSES).fill(0);
+
+			for (const s of scores) {
+				const idx = Math.max(0, Math.min(NUM_CLASSES - 1, Math.round(s) - 1));
+				bins[idx]++;
+			}
+
+			return {
+				bins,
+				labels: Array.from({ length: NUM_CLASSES }, (_, i) => String(i + 1)),
+				min: 1,
+				max: NUM_CLASSES
+			};
+		}
+
+		const min = Math.min(...scores);
+		const max = Math.max(...scores);
+		const range = Math.max(max - min, 1e-8);
+
+		const bins = Array(NUM_BINS).fill(0);
+
+		for (const s of scores) {
+			const idx = Math.min(NUM_BINS - 1, Math.floor(((s - min) / range) * NUM_BINS));
+
+			bins[idx]++;
+		}
+
+		return {
+			bins,
+			labels: Array.from({ length: NUM_BINS }, (_, i) => (min + (i / NUM_BINS) * range).toFixed(1)),
+			min,
+			max
+		};
+	}
+
+	/* ------------------------------------------------------------ */
+	/* Everything derived for each conformity score                  */
+	/* ------------------------------------------------------------ */
+
+	const scoreData = $derived.by(() =>
+		SCORE_TYPES.map((method) => {
+			/* Calibration scores */
+
+			const calibrationScores = calData.map((sample) => method.score(sample.probas, sample.label));
+
+			/* Quantile */
+
+			const qHat = computeQuantileThreshold(calibrationScores, alpha);
+
+			/* Prediction set for selected test point */
+
+			const predictionSet = buildPredictionSet(currentTest.probas, qHat, method.score);
+
+			/* Empirical coverage */
+
+			const covered = testData.filter((sample) => {
+				return buildPredictionSet(sample.probas, qHat, method.score).includes(sample.label);
+			}).length;
+
+			/* Average prediction set size */
+
+			const averageSetSize =
+				testData.reduce((acc, sample) => {
+					return acc + buildPredictionSet(sample.probas, qHat, method.score).length;
+				}, 0) / testData.length;
+
+			return {
+				...method,
+
+				calibrationScores,
+
+				qHat,
+
+				histogram: computeHistogram(calibrationScores, method.discrete),
+
+				predictionSet,
+
+				coverage: covered,
+
+				coverageRate: covered / testData.length,
+
+				averageSetSize
+			};
+		})
+	);
 </script>
 
 <div class="score-comparison">
-	<!-- ═══════════ Header: Test point info ═══════════ -->
+	<!-- ═══════════ Test point header ═══════════ -->
 	<div class="header">
 		<div class="test-point-label">
 			Point test #{testIndex + 1} — Classe vraie :
-			<strong style="color: {CLASS_COLORS[currentTest.label]}">{CLASSES[currentTest.label]}</strong>
+			<strong style="color: {CLASS_COLORS[currentTest.label]}">
+				{CLASSES[currentTest.label]}
+			</strong>
 		</div>
 
-		<!-- Mini bar chart of test probabilities -->
 		<div class="proba-bars">
 			{#each currentTest.probas as p, i (i)}
 				<div class="proba-col">
-					<div class="proba-bar" style="height: {p * 100}%; background: {CLASS_COLORS[i]}">
+					<div
+						class="proba-bar"
+						style="
+							height: {Math.max(p * 100, 5)}%;
+							background:{CLASS_COLORS[i]}
+						"
+					>
 						{#if p > 0.15}
-							<span class="proba-val">{(p * 100).toFixed(0)}%</span>
+							<span class="proba-val">
+								{(p * 100).toFixed(0)}%
+							</span>
 						{/if}
 					</div>
-					<span class="class-label" class:true={i === currentTest.label}>{CLASSES[i]}</span>
+
+					<span class="class-label" class:true={i === currentTest.label}>
+						{CLASSES[i]}
+					</span>
 				</div>
 			{/each}
 		</div>
 	</div>
 
-	<!-- ═══════════ Three score panels ═══════════ -->
+	<!-- ═══════════ Score panels ═══════════ -->
 	<div class="panels">
-		<!-- Panel 1: Rank score -->
-		<div class="panel">
-			<div class="panel-header" style="border-color: {SCORE_TYPES[0].color}">
-				<span class="panel-title">Score de rang</span>
-				<span class="panel-formula"><KatexInline formula={SCORE_TYPES[0].formula} /></span>
-			</div>
+		{#each scoreData as score, i (score.id)}
+			<!-- TypeScript is happy: Constants are now immediate children of the #each block -->
+			{@const hW = widths[i] || 0}
+			{@const plotW = hW - HIST_PAD.left - HIST_PAD.right}
+			{@const plotH = HIST_HEIGHT - HIST_PAD.top - HIST_PAD.bottom}
+			{@const base = HIST_HEIGHT - HIST_PAD.bottom}
+			{@const maxCount = Math.max(...score.histogram.bins, 1)}
 
-			<Figure type="chart" containerWidth={histWidthRank}>
-				{#if histWidthRank > 0}
-					{@const hW = histWidthRank}
-					{@const hPlotW = hW - HIST_PAD.left - HIST_PAD.right}
-					{@const hPlotH = HIST_HEIGHT - HIST_PAD.top - HIST_PAD.bottom}
-					{@const hBase = HIST_HEIGHT - HIST_PAD.bottom}
-					{@const maxCount = Math.max(...histRank.bins)}
-					<svg viewBox={`0 0 ${hW} ${HIST_HEIGHT}`} width="100%" height={HIST_HEIGHT} role="img">
-						{#each histRank.bins as count, i (i)}
-							{@const slotW = hPlotW / NUM_CLASSES}
-							{@const bW = Math.min(slotW * 0.6, 36)}
-							{@const bX = HIST_PAD.left + i * slotW + (slotW - bW) / 2}
-							{@const bH = (count / maxCount) * hPlotH}
-							{@const isIncluded = i + 1 <= qRank}
-							<rect
-								x={bX}
-								y={hBase - bH}
-								width={bW}
-								height={Math.max(0, bH)}
-								fill={SCORE_TYPES[0].color}
-								opacity={isIncluded ? 0.75 : 0.25}
-								rx="2"
-							/>
-							<text
-								x={bX + bW / 2}
-								y={hBase + 14}
-								text-anchor="middle"
-								font-size="9.5"
-								font-family="var(--font-mono)"
-								fill="var(--color-text-muted)"
-							>
-								{i + 1}
-							</text>
-						{/each}
-
-						{#if qRank !== Infinity}
-							{@const qNorm = (qRank - 0.5) / NUM_CLASSES}
-							{@const qX = HIST_PAD.left + Math.min(1, Math.max(0, qNorm)) * hPlotW}
-							<line
-								x1={qX}
-								y1={HIST_PAD.top}
-								x2={qX}
-								y2={hBase}
-								stroke="var(--color-text)"
-								stroke-width="1.5"
-								stroke-dasharray="4,3"
-							/>
-							<text
-								x={qX}
-								y={HIST_PAD.top - 1}
-								text-anchor="middle"
-								font-size="9"
-								font-family="var(--font-mono)"
-								fill="var(--color-text)"
-								font-weight="600">q̂={qRank}</text
-							>
-						{/if}
-
-						<line
-							x1={HIST_PAD.left}
-							y1={hBase}
-							x2={hW - HIST_PAD.right}
-							y2={hBase}
-							stroke="var(--color-border)"
-							stroke-width="1"
-						/>
-					</svg>
-				{/if}
-			</Figure>
-
-			<div class="panel-stats">
-				<div class="stat-row">
-					<span class="stat-label">q̂</span>
-					<span class="stat-value">{Number.isInteger(qRank) ? qRank : qRank.toFixed(2)}</span>
+			<div class="panel">
+				<div class="panel-header" style="border-color:{score.color}">
+					<div class="panel-title">
+						{score.name}
+					</div>
+					<div class="panel-formula">
+						<KatexInline formula={score.formula} />
+					</div>
 				</div>
-				<div class="stat-row">
-					<span class="stat-label">C(x)</span>
-					<span class="stat-value">[{predSetRank.map((c) => CLASSES[c]).join(', ')}]</span>
-				</div>
-				<div class="stat-row">
-					<span class="stat-label">|C(x)|</span>
-					<span class="stat-value">{predSetRank.length}/{NUM_CLASSES}</span>
-				</div>
-				<div class="stat-row coverage">
-					<span class="stat-label">Couverture</span>
-					<span class="stat-value"
-						>{coverageRank}/{NUM_TEST} = {((coverageRank / NUM_TEST) * 100).toFixed(0)}%</span
+
+				<!-- Histogram -->
+				<Figure type="chart">
+					<svg
+						bind:clientWidth={widths[i]}
+						viewBox={`0 0 ${hW} ${HIST_HEIGHT}`}
+						width="100%"
+						height={HIST_HEIGHT}
 					>
-				</div>
-			</div>
-		</div>
+						{#if hW > 0}
+							{#each score.histogram.bins as count, binIdx}
+								{@const bins = score.histogram.bins.length}
+								{@const bw = plotW / bins}
+								{@const bh = (count / maxCount) * plotH}
+								{@const x = HIST_PAD.left + binIdx * bw}
 
-		<!-- Panel 2: 1-p score -->
-		<div class="panel">
-			<div class="panel-header" style="border-color: {SCORE_TYPES[1].color}">
-				<span class="panel-title">1-p̂</span>
-				<span class="panel-formula"><KatexInline formula={SCORE_TYPES[1].formula} /></span>
-			</div>
+								<rect
+									{x}
+									y={base - bh}
+									width={bw * 0.9}
+									height={bh}
+									fill={score.color}
+									opacity="0.7"
+									rx="2"
+								/>
 
-			<Figure type="chart" containerWidth={histWidthOneMinusProba}>
-				{#if histWidthOneMinusProba > 0}
-					{@const hW = histWidthOneMinusProba}
-					{@const hPlotW = hW - HIST_PAD.left - HIST_PAD.right}
-					{@const hPlotH = HIST_HEIGHT - HIST_PAD.top - HIST_PAD.bottom}
-					{@const hBase = HIST_HEIGHT - HIST_PAD.bottom}
-					{@const maxCount = Math.max(...histOneMinusProba.bins)}
-					<svg viewBox={`0 0 ${hW} ${HIST_HEIGHT}`} width="100%" height={HIST_HEIGHT} role="img">
-						{#each histOneMinusProba.bins as count, i (i)}
-							{@const bW = hPlotW / NUM_BINS}
-							{@const bX = HIST_PAD.left + i * bW}
-							{@const bH = (count / maxCount) * hPlotH}
-							{@const binStart =
-								histOneMinusProba.min +
-								(i / NUM_BINS) * (histOneMinusProba.max - histOneMinusProba.min)}
-							{@const isIncluded = binStart <= qOneMinusProba}
-							<rect
-								x={bX}
-								y={hBase - bH}
-								width={bW}
-								height={Math.max(0, bH)}
-								fill={SCORE_TYPES[1].color}
-								opacity={isIncluded ? 0.75 : 0.25}
-								rx="1"
-							/>
-						{/each}
-
-						{#each histOneMinusProba.labels as label, i (i)}
-							{#if i % 2 === 0}
 								<text
-									x={HIST_PAD.left + (i + 0.5) * (hPlotW / NUM_BINS)}
-									y={hBase + 14}
+									x={x + bw / 2}
+									y={base + 14}
 									text-anchor="middle"
 									font-size="9"
-									font-family="var(--font-mono)"
 									fill="var(--color-text-muted)"
 								>
-									{label}
+									{score.histogram.labels[binIdx]}
 								</text>
-							{/if}
-						{/each}
+							{/each}
 
-						{#if qOneMinusProba !== Infinity}
-							{@const qNorm =
-								(qOneMinusProba - histOneMinusProba.min) /
-								(histOneMinusProba.max - histOneMinusProba.min)}
-							{@const qX = HIST_PAD.left + Math.min(1, Math.max(0, qNorm)) * hPlotW}
-							<line
-								x1={qX}
-								y1={HIST_PAD.top}
-								x2={qX}
-								y2={hBase}
-								stroke="var(--color-text)"
-								stroke-width="1.5"
-								stroke-dasharray="4,3"
-							/>
-							<text
-								x={qX}
-								y={HIST_PAD.top - 1}
-								text-anchor="middle"
-								font-size="9"
-								font-family="var(--font-mono)"
-								fill="var(--color-text)"
-								font-weight="600">q̂={qOneMinusProba.toFixed(2)}</text
-							>
-						{/if}
+							<!-- Quantile line -->
+							{#if Number.isFinite(score.qHat)}
+								{@const range = score.histogram.max - score.histogram.min}
+								{@const norm = range > 0 ? (score.qHat - score.histogram.min) / range : 0}
+								{@const qx = HIST_PAD.left + Math.max(0, Math.min(1, norm)) * plotW}
 
-						<line
-							x1={HIST_PAD.left}
-							y1={hBase}
-							x2={hW - HIST_PAD.right}
-							y2={hBase}
-							stroke="var(--color-border)"
-							stroke-width="1"
-						/>
-					</svg>
-				{/if}
-			</Figure>
+								<line
+									x1={qx}
+									y1={HIST_PAD.top}
+									x2={qx}
+									y2={base}
+									stroke="var(--color-text)"
+									stroke-width="1.5"
+									stroke-dasharray="4 3"
+								/>
 
-			<div class="panel-stats">
-				<div class="stat-row">
-					<span class="stat-label">q̂</span>
-					<span class="stat-value">{qOneMinusProba.toFixed(3)}</span>
-				</div>
-				<div class="stat-row">
-					<span class="stat-label">C(x)</span>
-					<span class="stat-value">[{predSetOneMinusProba.map((c) => CLASSES[c]).join(', ')}]</span>
-				</div>
-				<div class="stat-row">
-					<span class="stat-label">|C(x)|</span>
-					<span class="stat-value">{predSetOneMinusProba.length}/{NUM_CLASSES}</span>
-				</div>
-				<div class="stat-row coverage">
-					<span class="stat-label">Couverture</span>
-					<span class="stat-value"
-						>{coverageOneMinusProba}/{NUM_TEST} = {(
-							(coverageOneMinusProba / NUM_TEST) *
-							100
-						).toFixed(0)}%</span
-					>
-				</div>
-			</div>
-		</div>
-
-		<!-- Panel 3: Cumulative score -->
-		<div class="panel">
-			<div class="panel-header" style="border-color: {SCORE_TYPES[2].color}">
-				<span class="panel-title">Cumulatif</span>
-				<span class="panel-formula"><KatexInline formula={SCORE_TYPES[2].formula} /></span>
-			</div>
-
-			<Figure type="chart" containerWidth={histWidthCumulative}>
-				{#if histWidthCumulative > 0}
-					{@const hW = histWidthCumulative}
-					{@const hPlotW = hW - HIST_PAD.left - HIST_PAD.right}
-					{@const hPlotH = HIST_HEIGHT - HIST_PAD.top - HIST_PAD.bottom}
-					{@const hBase = HIST_HEIGHT - HIST_PAD.bottom}
-					{@const maxCount = Math.max(...histCumulative.bins)}
-					<svg viewBox={`0 0 ${hW} ${HIST_HEIGHT}`} width="100%" height={HIST_HEIGHT} role="img">
-						{#each histCumulative.bins as count, i (i)}
-							{@const bW = hPlotW / NUM_BINS}
-							{@const bX = HIST_PAD.left + i * bW}
-							{@const bH = (count / maxCount) * hPlotH}
-							{@const binStart =
-								histCumulative.min + (i / NUM_BINS) * (histCumulative.max - histCumulative.min)}
-							{@const isIncluded = binStart <= qCumulative}
-							<rect
-								x={bX}
-								y={hBase - bH}
-								width={bW}
-								height={Math.max(0, bH)}
-								fill={SCORE_TYPES[2].color}
-								opacity={isIncluded ? 0.75 : 0.25}
-								rx="1"
-							/>
-						{/each}
-
-						{#each histCumulative.labels as label, i (i)}
-							{#if i % 2 === 0}
 								<text
-									x={HIST_PAD.left + (i + 0.5) * (hPlotW / NUM_BINS)}
-									y={hBase + 14}
+									x={qx}
+									y={HIST_PAD.top - 1}
 									text-anchor="middle"
 									font-size="9"
-									font-family="var(--font-mono)"
-									fill="var(--color-text-muted)"
+									fill="var(--color-text)"
 								>
-									{label}
+									q̂={score.qHat.toFixed(2)}
 								</text>
 							{/if}
-						{/each}
 
-						{#if qCumulative !== Infinity}
-							{@const qNorm =
-								(qCumulative - histCumulative.min) / (histCumulative.max - histCumulative.min)}
-							{@const qX = HIST_PAD.left + Math.min(1, Math.max(0, qNorm)) * hPlotW}
 							<line
-								x1={qX}
-								y1={HIST_PAD.top}
-								x2={qX}
-								y2={hBase}
-								stroke="var(--color-text)"
-								stroke-width="1.5"
-								stroke-dasharray="4,3"
+								x1={HIST_PAD.left}
+								y1={base}
+								x2={hW - HIST_PAD.right}
+								y2={base}
+								stroke="var(--color-border)"
 							/>
-							<text
-								x={qX}
-								y={HIST_PAD.top - 1}
-								text-anchor="middle"
-								font-size="9"
-								font-family="var(--font-mono)"
-								fill="var(--color-text)"
-								font-weight="600">q̂={qCumulative.toFixed(2)}</text
-							>
 						{/if}
-
-						<line
-							x1={HIST_PAD.left}
-							y1={hBase}
-							x2={hW - HIST_PAD.right}
-							y2={hBase}
-							stroke="var(--color-border)"
-							stroke-width="1"
-						/>
 					</svg>
-				{/if}
-			</Figure>
+				</Figure>
 
-			<div class="panel-stats">
-				<div class="stat-row">
-					<span class="stat-label">q̂</span>
-					<span class="stat-value">{qCumulative.toFixed(3)}</span>
-				</div>
-				<div class="stat-row">
-					<span class="stat-label">C(x)</span>
-					<span class="stat-value">[{predSetCumulative.map((c) => CLASSES[c]).join(', ')}]</span>
-				</div>
-				<div class="stat-row">
-					<span class="stat-label">|C(x)|</span>
-					<span class="stat-value">{predSetCumulative.length}/{NUM_CLASSES}</span>
-				</div>
-				<div class="stat-row coverage">
-					<span class="stat-label">Couverture</span>
-					<span class="stat-value"
-						>{coverageCumulative}/{NUM_TEST} = {((coverageCumulative / NUM_TEST) * 100).toFixed(
-							0
-						)}%</span
-					>
+				<!-- Statistics -->
+
+				<div class="panel-stats">
+					<div class="stat-row">
+						<span class="stat-label"> q̂ </span>
+
+						<span class="stat-value">
+							{score.qHat.toFixed(3)}
+						</span>
+					</div>
+
+					<div class="stat-row">
+						<span class="stat-label"> C(x) </span>
+
+						<span class="stat-value">
+							[
+							{score.predictionSet.map((c) => CLASSES[c]).join(', ')}
+							]
+						</span>
+					</div>
+
+					<div class="stat-row">
+						<span class="stat-label"> |C(x)| </span>
+
+						<span class="stat-value">
+							{score.predictionSet.length}
+							/
+							{NUM_CLASSES}
+						</span>
+					</div>
+
+					<div class="stat-row">
+						<span class="stat-label"> Couverture </span>
+
+						<span class="stat-value coverage">
+							{score.coverage}
+							/
+							{NUM_TEST}
+							=
+							{(score.coverageRate * 100).toFixed(0)}%
+						</span>
+					</div>
+
+					<div class="stat-row">
+						<span class="stat-label"> Taille moyenne </span>
+
+						<span class="stat-value">
+							{score.averageSetSize.toFixed(2)}
+						</span>
+					</div>
 				</div>
 			</div>
-		</div>
+		{/each}
 	</div>
 
 	<!-- ═══════════ Controls ═══════════ -->
+
 	<SliderGrid variant="outline">
 		<div class="grp">
 			<div class="gttl">Niveau de signification α</div>
+
 			<Slider bind:value={alpha} min={0.01} max={0.3} step={0.01} label="α" />
 		</div>
+
 		<div class="grp">
 			<div class="gttl">Point test</div>
+
 			<Slider bind:value={testIndex} min={0} max={NUM_TEST - 1} step={1} label="Index" />
 		</div>
 	</SliderGrid>
 
 	<p class="cap">
-		Comparaison des trois scores de conformité pour la même donnée de test. Le score de rang produit
-		des ensembles discrets (Top-K), tandis que les scores probabilistes (1-p̂ et cumulatif)
-		permettent des ensembles de taille variable. Le score cumulatif tend à produire des ensembles
-		plus petits pour un même niveau de couverture.
+		Le seuil q̂ est calibré sur les données de calibration afin de contrôler la probabilité d'erreur.
+		Un score de conformité transforme la sortie du classifieur en ensemble prédictif : les classes
+		dont le score est inférieur au seuil sont conservées. Les différents scores modifient le
+		compromis entre couverture garantie et taille des ensembles.
 	</p>
 </div>
 
@@ -698,10 +635,6 @@
 	.stat-value {
 		font-family: var(--font-mono);
 		font-weight: 600;
-	}
-
-	.stat-row.coverage .stat-value {
-		color: var(--color-positive, #22c55e);
 	}
 
 	/* ── Slider group ──────────────── */

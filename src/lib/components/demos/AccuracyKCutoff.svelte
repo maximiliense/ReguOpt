@@ -93,9 +93,12 @@
 
 	const topKGain = $derived(optimalAcc - top1Accuracy);
 
-	const maxAcc = $derived(optResult.accuracies[NUM_CLASSES - 1]);
-
-	const targetAchievable = $derived(maxAcc >= targetAccuracy);
+	// Acc@C (K = number of classes) is *always* 1.0 — the Top-K set then contains every
+	// class, so the true label is trivially included regardless of noise. Comparing the
+	// target against Acc@C is therefore a tautology (always true) and never reacts to the
+	// sliders. What we actually want to know is whether the target is reachable *without*
+	// falling back to the full label set — i.e. whether Top-K is still doing useful work.
+	const targetAchievable = $derived(optResult.k < NUM_CLASSES);
 
 	// ─── Chart layers ──────────────────────────────────
 
@@ -195,10 +198,17 @@
 
 		<div class="metric-divider"></div>
 
-		<div class="metric-item" class:achieved={targetAchievable}>
+		<!--
+			`target-metric` scopes the achieved/not-achieved color rules below to THIS item only.
+			Previously the CSS used a bare `:not(.achieved)` descendant selector, which matched
+			every `.metric-value` on the page (K optimal, Acc@K, Gain included) because none of
+			their ancestors carry `.achieved` either — it always won due to !important + source
+			order, so every number rendered red no matter what.
+		-->
+		<div class="metric-item target-metric" class:achieved={targetAchievable}>
 			<span class="metric-label">Cible</span>
 			<span class="metric-value">
-				{targetAchievable ? '✓ Atteinte' : '✗ Impossible'}
+				{targetAchievable ? '✓ Atteinte' : `✗ Nécessite K=${NUM_CLASSES}`}
 			</span>
 		</div>
 	</div>
@@ -318,12 +328,13 @@
 		flex-shrink: 0;
 	}
 
-	/* Status colors for target metric */
-	.achieved .metric-value {
+	/* Status colors for the target-achievement metric only (scoped to .target-metric,
+	   not a bare :not(.achieved) that would match every metric on the page). */
+	.target-metric.achieved .metric-value {
 		color: #22c55e !important;
 	}
 
-	:not(.achieved) .metric-value {
+	.target-metric:not(.achieved) .metric-value {
 		color: #ef4444 !important;
 	}
 

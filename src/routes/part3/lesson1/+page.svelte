@@ -9,10 +9,10 @@
 	import KatexBlock from '$lib/components/narrative/KatexBlock.svelte';
 	import KatexInline from '$lib/components/narrative/KatexInline.svelte';
 	import TopKExplorer from '$lib/components/demos/TopKExplorer.svelte';
-	import AccuracyKCutoff from '$lib/components/demos/AccuracyKCutoff.svelte';
 	import ConfidenceCalibration from '$lib/components/demos/ConfidenceCalibration.svelte';
 	import { getPageByPath, getNextPage, getPrevPage, type PageMeta } from '$lib/navigation.js';
 	import { createPageTracker } from '$lib/stores/progress.svelte';
+	import ExampleBlock from '$lib/components/narrative/ExampleBlock.svelte';
 
 	const meta = getPageByPath('/part3/lesson1');
 	const tracker = createPageTracker(meta as PageMeta);
@@ -45,19 +45,35 @@
 		</p>
 
 		<p>
-			Soit un classificateur qui associe à chaque échantillon <KatexInline formula="x" /> un vecteur de
-			probabilités prédites <KatexInline formula={String.raw`\hat{p}(x) = (p_1, \dots, p_C)`} />
-			sur C classes. Le <strong>Top-K</strong> de <KatexInline formula="x" /> est :
+			Pour raisonner rigoureusement sur ce compromis, il faut d'abord nommer l'objet théorique qui
+			gouverne toute la classification : la <strong>probabilité conditionnelle de classe</strong>.
+			Pour un problème à C classes, on note
 		</p>
 
 		<KatexBlock
-			formula={String.raw`\text{Top}_K(\hat{p}) = \{ c \mid \text{le rang de } p_c \text{ parmi } \{p_1, \dots, p_C\} \leq K \}`}
+			formula={String.raw`\eta_c(x) = \mathbb{P}(Y = c \mid X = x), \qquad c = 1, \dots, C`}
+		/>
+
+		<p>
+			Le vecteur <KatexInline formula={String.raw`\eta(x) = (\eta_1(x), \dots, \eta_C(x))`} />
+			résume tout ce qu'il y a à savoir sur <KatexInline formula="Y" /> une fois
+			<KatexInline formula="x" /> observé — c'est la quantité que tout classificateur cherche, explicitement
+			ou non, à approcher. Un modèle produit en pratique une estimation
+			<KatexInline formula={String.raw`\hat{p}(x) = (p_1, \dots, p_C)`} /> de <KatexInline
+				formula={String.raw`\eta(x)`}
+			/>, jamais <KatexInline formula={String.raw`\eta(x)`} /> lui-même. Le <strong>Top-K</strong>
+			de
+			<KatexInline formula="x" /> tel qu'observé par le modèle est alors :
+		</p>
+
+		<KatexBlock
+			formula={String.raw`\text{Top}_K(\hat{p}(x)) = \{ c \mid \text{le rang de } p_c \text{ parmi } \{p_1, \dots, p_C\} \leq K \}`}
 		/>
 
 		<p>
 			Un échantillon est dit <strong>correct</strong> si la vraie étiquette
 			<KatexInline formula="y" /> appartient à cet ensemble :
-			<KatexInline formula={String.raw`y \in \text{Top}_K(\hat{p})`} />.
+			<KatexInline formula={String.raw`y \in \text{Top}_K(\hat{p}(x))`} />.
 		</p>
 
 		<Callout type="definition" title="Exactitude Top-K (Accuracy@K)">
@@ -66,7 +82,7 @@
 		</Callout>
 
 		<KatexBlock
-			formula={String.raw`\text{Acc@}K = \frac{1}{N} \sum_{i=1}^{N} \mathbb{1}\big(y_i \in \text{Top}_K(\hat{p}_i)\big)`}
+			formula={String.raw`\text{Acc@}K = \frac{1}{N} \sum_{i=1}^{N} \mathbb{1}\big(y_i \in \text{Top}_K(\hat{p}(x_i))\big)`}
 		/>
 
 		<p>
@@ -78,9 +94,165 @@
 		</p>
 	</TheorySection>
 
+	<TheorySection>
+		<h2>Le risque Top-K bayésien</h2>
+
+		<p>
+			<KatexInline formula={String.raw`\text{Acc@}K`} /> est une quantité <em>empirique</em>,
+			calculée sur un échantillon fini avec les scores estimés <KatexInline
+				formula={String.raw`\hat{p}`}
+			/>. Il est instructif de se demander : que se passe-t-il à la limite, si le modèle disposait
+			des véritables probabilités <KatexInline formula={String.raw`\eta(x)`} /> ? Quel est le meilleur
+			ensemble de taille K possible, et quelle exactitude peut-il espérer atteindre ?
+		</p>
+
+		<p>
+			Formalisons la classification Top-K comme un problème de décision. Un prédicteur d'ensembles
+			est une fonction <KatexInline
+				formula={String.raw`S : \mathcal{X} \to \mathcal{P}(\{1,\dots,C\})`}
+			/>
+			qui associe à <KatexInline formula="x" /> un sous-ensemble de classes de taille
+			<KatexInline formula="K" />. On lui associe la perte <KatexInline
+				formula={String.raw`\ell(S(x), y) = \mathbb{1}(y \notin S(x))`}
+			/> — l'échec est de laisser la vraie classe hors de l'ensemble — et le risque :
+		</p>
+
+		<KatexBlock
+			formula={String.raw`R(S) = \mathbb{E}_{(X,Y)}\big[\, \mathbb{1}(Y \notin S(X)) \,\big] = 1 - \text{Acc@}K`}
+		/>
+
+		<p>
+			Conditionnellement à <KatexInline formula="X = x" />, ce risque s'écrit directement en
+			fonction de <KatexInline formula={String.raw`\eta(x)`} /> :
+		</p>
+
+		<KatexBlock
+			formula={String.raw`\mathbb{P}(Y \notin S \mid X = x) = 1 - \mathbb{P}(Y \in S \mid X = x) = 1 - \sum_{c \in S} \eta_c(x)`}
+		/>
+
+		<Callout type="intuition" title="D'où vient cette formule ?">
+			<KatexInline formula={String.raw`Y \in S`} /> est l'union disjointe des événements
+			<KatexInline formula={String.raw`\{Y = c\}`} /> pour <KatexInline formula="c \in S" />, donc <KatexInline
+				formula={String.raw`\mathbb{P}(Y \in S \mid x) = \sum_{c \in S} \mathbb{P}(Y=c\mid x) = \sum_{c\in S}\eta_c(x)`}
+			/>. Manquer la classe est l'événement complémentaire.
+		</Callout>
+
+		<p>
+			Le meilleur ensemble <KatexInline formula="S(x)" /> de taille fixée <KatexInline
+				formula="K"
+			/> est donc celui qui <strong>maximise la masse de probabilité captée</strong>
+			<KatexInline formula={String.raw`\sum_{c \in S} \eta_c(x)`} />. Or pour tout ensemble
+			<KatexInline formula="S" /> de cardinal K, cette somme est majorée par la somme des K plus grandes
+			valeurs parmi <KatexInline formula={String.raw`\eta_1(x), \dots, \eta_C(x)`} /> — c'est la définition
+			même des statistiques d'ordre. En notant
+		</p>
+
+		<KatexBlock
+			formula={String.raw`\eta_{(1)}(x) \geq \eta_{(2)}(x) \geq \cdots \geq \eta_{(C)}(x)`}
+		/>
+
+		<p>
+			le rangement décroissant des probabilités conditionnelles, l'égalité n'est atteinte que
+			lorsque
+		</p>
+
+		<KatexBlock
+			formula={String.raw`S^*(x) = \{ c \mid \eta_c(x) \text{ est parmi les } K \text{ plus grandes valeurs} \} = \text{Top}_K(\eta(x))`}
+		/>
+
+		<p>
+			c'est-à-dire lorsque <KatexInline formula="S" /> contient exactement les K classes les plus probables
+			<em>au sens de la vérité</em>
+			<KatexInline formula={String.raw`\eta(x)`} />, et non de son estimation <KatexInline
+				formula={String.raw`\hat{p}(x)`}
+			/>. <KatexInline formula="S^*(x)" /> est le <strong>prédicteur Top-K bayésien</strong> : aucun
+			autre ensemble de taille K ne peut faire mieux, en moyenne, sur ce point <KatexInline
+				formula="x"
+			/>.
+		</p>
+
+		<Callout type="definition" title="Risque Top-K bayésien">
+			En substituant <KatexInline formula={String.raw`S^*(x)`} /> dans l'expression du risque et en moyennant
+			sur <KatexInline formula="X" />, on obtient le plus petit risque Top-K atteignable par
+			n'importe quel classificateur :
+		</Callout>
+
+		<KatexBlock
+			formula={String.raw`R_K^* = \mathbb{E}_X\!\left[\, 1 - \sum_{k=1}^{K} \eta_{(k)}(X) \,\right]`}
+		/>
+
+		<p>
+			C'est la généralisation directe du <strong>risque bayésien</strong> classique de la
+			classification : pour <KatexInline formula="K = 1" />, on retrouve
+			<KatexInline formula={String.raw`R_1^* = \mathbb{E}_X[1 - \eta_{(1)}(X)]`} />, le risque du
+			classificateur <KatexInline formula={String.raw`\arg\max_c \eta_c(x)`} />
+			— la règle de décision optimale usuelle. Pour <KatexInline formula="K = C" />, la somme épuise
+			tout le simplexe (<KatexInline formula={String.raw`\sum_c \eta_c(x) = 1`} />) et
+			<KatexInline formula="R_C^* = 0" />.
+		</p>
+
+		<p>
+			La décroissance de <KatexInline formula={String.raw`K \mapsto R_K^*`} /> a une interprétation exacte
+			: le gain marginal obtenu en passant de K−1 à K classes est précisément la probabilité moyenne de
+			la K-ième classe la plus vraisemblable,
+		</p>
+
+		<KatexBlock
+			formula={String.raw`R_{K-1}^* - R_K^* = \mathbb{E}_X\big[\eta_{(K)}(X)\big] \;\geq\; 0`}
+		/>
+
+		<p>
+			ce qui explique la forme de la courbe <KatexInline formula={String.raw`\text{Acc@}K`} /> observée
+			empiriquement : les premiers incréments de K rapportent beaucoup lorsque
+			<KatexInline formula={String.raw`\eta(x)`} /> est concentrée sur peu de classes, et de moins en
+			moins à mesure qu'on absorbe la queue de la distribution.
+		</p>
+		<ExampleBlock title="Exemple numérique"
+			>Soit <KatexInline formula="C = 5" /> classes avec
+			<KatexInline formula={String.raw`\eta(x) = (0.50,\ 0.25,\ 0.15,\ 0.07,\ 0.03)`} /> déjà triées par
+			ordre décroissant en <KatexInline formula="x" />.
+			<table>
+				<thead>
+					<tr>
+						<th>K</th>
+						<th><KatexInline formula={String.raw`\sum_{k=1}^K \eta_{(k)}(x)`} /></th>
+						<th>Risque <KatexInline formula={String.raw`1 - \sum_{k=1}^K \eta_{(k)}(x)`} /></th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr><td>1</td><td>0.50</td><td>0.50</td></tr>
+					<tr><td>2</td><td>0.75</td><td>0.25</td></tr>
+					<tr><td>3</td><td>0.90</td><td>0.10</td></tr>
+					<tr><td>4</td><td>0.97</td><td>0.03</td></tr>
+					<tr><td>5</td><td>1.00</td><td>0.00</td></tr>
+				</tbody>
+			</table>
+		</ExampleBlock>
+
+		<p>
+			Au point <KatexInline formula="x" />, il est impossible de faire mieux que 10% de risque avec
+			un ensemble de taille 3 — quel que soit le modèle utilisé — car la masse restante,
+			<KatexInline formula="0.07 + 0.03" />, est irréductiblement hors du Top-3.
+		</p>
+	</TheorySection>
+
 	<InteractiveSection tag="Démo 9.1">
 		<TopKExplorer />
 	</InteractiveSection>
+
+	<TheorySection>
+		<p>
+			Ce résultat éclaire aussi ce que <KatexInline formula={String.raw`\text{Acc@}K`} /> mesure en pratique
+			: c'est un estimateur de <KatexInline formula={String.raw`1 - R_K(\text{Top}_K(\hat{p}))`} />,
+			le complément du risque obtenu avec les scores <em>estimés</em>
+			<KatexInline formula={String.raw`\hat{p}`} />, et non le risque bayésien
+			<KatexInline formula={String.raw`R_K^*`} />. Les deux coïncident seulement si le classement
+			induit par <KatexInline formula={String.raw`\hat{p}(x)`} /> — pas nécessairement ses valeurs exactes
+			— correspond à celui de <KatexInline formula={String.raw`\eta(x)`} />, pour chaque <KatexInline
+				formula="x"
+			/>. On y reviendra dans la section sur la calibration.
+		</p>
+	</TheorySection>
 
 	<TheorySection>
 		<h2>Choix adaptatif de K</h2>
@@ -109,17 +281,55 @@
 			<strong>détection de fraude</strong>, où il est préférable de signaler un petit ensemble de
 			suspects plutôt que de passer à côté d'un vrai cas positif.
 		</p>
+
+		<Callout type="warning" title="Un K global n'est pas optimal point par point">
+			Le K<sup>*</sup> ci-dessus est un <strong>K unique, fixé pour tout l'espace</strong>
+			<KatexInline formula={String.raw`\mathcal{X}`} />. Mais <KatexInline
+				formula={String.raw`\eta(x)`}
+			/> varie d'un point à l'autre : à certains
+			<KatexInline formula="x" /> la masse est très concentrée (un seul K=1 suffit), à d'autres elle est
+			diffuse sur de nombreuses classes proches. La règle décision-théoriquement optimale pour garantir
+			une couverture <KatexInline formula={String.raw`\tau`} /> au meilleur coût moyen choisirait un <KatexInline
+				formula="K(x)"
+			/> <em>local</em>, la plus petite valeur telle que
+			<KatexInline formula={String.raw`\sum_{k=1}^{K(x)} \eta_{(k)}(x) \geq \tau`} />. Un K global
+			n'est qu'une approximation grossière — commode, mais sous-optimale — de cette règle
+			adaptative. C'est exactement l'idée qui sera formalisée par la
+			<strong>prédiction conformelle</strong>
+			dans la leçon suivante, sans même nécessiter de connaître <KatexInline
+				formula={String.raw`\eta(x)`}
+			/>.
+		</Callout>
 	</TheorySection>
+
+	<!-- <InteractiveSection tag="Démo 9.2">
+		<AccuracyKCutoff />
+	</InteractiveSection> -->
 
 	<TheorySection>
 		<h2>Calibration de la confiance</h2>
 
 		<p>
-			La qualité d'un ensemble Top-K dépend de la qualité des probabilités prédites. Un modèle est
-			dit <strong>calibré</strong> si, chaque fois qu'il prédit une confiance de <KatexInline
-				formula="c"
-			/>, sa précision empirique autour de
-			<KatexInline formula="c" /> correspond bien à <KatexInline formula="c" />.
+			On a vu que l'ensemble Top-K bayésien <KatexInline
+				formula={String.raw`S^*(x) = \text{Top}_K(\eta(x))`}
+			/> ne dépend que du <strong>classement</strong> des <KatexInline
+				formula={String.raw`\eta_c(x)`}
+			/>, pas de leurs valeurs exactes. Un modèle dont les scores
+			<KatexInline formula={String.raw`\hat{p}(x)`} /> classent correctement les classes — même s'ils
+			sont mal calibrés en valeur absolue — produit donc déjà le bon ensemble Top-K pour un
+			<KatexInline formula="K" /> fixé.
+		</p>
+
+		<p>
+			En revanche, dès qu'on veut choisir <KatexInline formula="K" /> <em>via</em> un seuil de masse
+			cumulée (comme <KatexInline formula={String.raw`K^*`} /> ci-dessus, ou la règle adaptative
+			<KatexInline formula="K(x)" />), les <strong>valeurs</strong> de
+			<KatexInline formula={String.raw`\hat{p}(x)`} /> comptent, pas seulement leur ordre. C'est là qu'intervient
+			la <strong>calibration</strong> : un modèle est dit calibré si, chaque fois qu'il prédit une
+			confiance de <KatexInline formula="c" />, sa précision empirique autour de
+			<KatexInline formula="c" /> correspond bien à <KatexInline formula="c" /> — autrement dit, si
+			<KatexInline formula={String.raw`\hat{p}_c(x)`} /> est une bonne approximation de
+			<KatexInline formula={String.raw`\eta_c(x)`} /> elle-même, et pas seulement de son rang.
 		</p>
 
 		<p>
@@ -131,7 +341,7 @@
 		<Callout type="warning" title="Modèles modernes et calibration">
 			Les réseaux de profondeur importante, notamment les ensembles (Random Forest, Boosting), ont
 			tendance à produire des scores extrêmes. Sans calibration a posteriori, les seuils dérivés de
-			ces scores peuvent être trompeurs.
+			ces scores peuvent être trompeurs — même si le classement Top-K, lui, reste correct.
 		</Callout>
 
 		<p>
@@ -149,7 +359,11 @@
 				formula="T"
 			/> est appris sur un ensemble de calibration pour minimiser l'<strong
 				>Error de Calibration Attendue</strong
-			> (ECE).
+			>
+			(ECE). Point important : le rééchelonnage par température est une fonction
+			<strong>strictement croissante</strong> des logits, donc elle ne modifie jamais le classement
+			des classes — elle laisse le prédicteur Top-K inchangé et n'affecte que le choix de
+			<KatexInline formula="K" /> par seuillage.
 		</p>
 
 		<ExpertPanel title="Expected Calibration Error (ECE)">
@@ -177,10 +391,17 @@
 
 		<p>
 			La classification Top-K généralise la classification standard en renvoyant un ensemble de
-			candidats plutôt qu'une unique prédiction. Le choix de K se fait par seuillage d'exactitude,
-			et la qualité des ensembles dépend de la calibration des scores de confiance. Ces outils
-			forment le socle de la <strong>prédiction d'ensembles</strong>, dont la forme la plus aboutie
-			est la <em>prédiction conformelle</em> — abordée dans la leçon suivante.
+			candidats plutôt qu'une unique prédiction. Vue à travers les probabilités conditionnelles
+			<KatexInline formula={String.raw`\eta_c(x)`} />, elle admet une solution bayésienne exacte :
+			le meilleur ensemble de taille K est celui des K classes les plus probables, et le risque
+			associé vaut <KatexInline formula={String.raw`1 - \sum_{k=1}^K \eta_{(k)}(x)`} /> — la masse de
+			probabilité laissée hors de l'ensemble. Cette décomposition sépare nettement deux exigences distinctes
+			sur un modèle : un <strong>bon classement</strong> des classes (suffisant pour un K fixé) et
+			une <strong>bonne calibration</strong> des valeurs (nécessaire dès qu'on choisit K par
+			seuillage). Ces outils forment le socle de la <strong>prédiction d'ensembles</strong>, dont la
+			forme la plus aboutie — une garantie de couverture valide sans connaître
+			<KatexInline formula={String.raw`\eta(x)`} /> — est la <em>prédiction conformelle</em>,
+			abordée dans la leçon suivante.
 		</p>
 	</TheorySection>
 
@@ -199,5 +420,61 @@
 			journal="Proceedings of the British Machine Vision Conference (BMVC)."
 			link="https://www.alexander-noble.com/static/img/Noble-2014-How_Not.pdf"
 		/>
+		<BibElement
+			authors={['Lapin, M.', 'Hein, M.', 'Schiele, B.']}
+			year={2016}
+			title="Loss Functions for Top-k Error: Analysis and Insights"
+			journal="Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR), pp. 1468–1477."
+			link="https://arxiv.org/abs/1512.00486"
+		/>
+		<BibElement
+			authors={['Devroye, L.', 'Györfi, L.', 'Lugosi, G.']}
+			year={1996}
+			title="A Probabilistic Theory of Pattern Recognition"
+			journal="Springer-Verlag."
+			link="https://doi.org/10.1007/978-1-4612-0711-5"
+		/>
 	</Bibliography>
 </PageTemplate>
+
+<style>
+	table {
+		width: 100%;
+		border-collapse: collapse;
+		margin: 1rem 0;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+		border-radius: 8px;
+		overflow: hidden;
+	}
+
+	thead {
+		background-color: #f9fafb;
+	}
+
+	th {
+		padding: 0.75rem 1rem;
+		text-align: left;
+		font-size: 0.75rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: #6b7280;
+		border-bottom: 1px solid #e5e7eb;
+	}
+
+	td {
+		padding: 0.75rem 1rem;
+		font-size: 0.875rem;
+		color: #1f2937;
+		border-bottom: 1px solid #e5e7eb;
+	}
+
+	tbody tr:hover {
+		background-color: #f3f4f6;
+		transition: background-color 0.15s ease;
+	}
+
+	tbody tr:last-child td {
+		border-bottom: none;
+	}
+</style>
