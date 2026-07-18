@@ -1,1 +1,0 @@
-import{af as e,aS as s,b2 as n}from"./DdV8kQem.js";import{p as c}from"./DGjLOpJe.js";function i(r){let t=n(!1);function a(){e(t)||(s(t,!0),c.markInteracted(r.resolvedPath))}return{get hasInteracted(){return e(t)},trackInteraction:a}}export{i as c};

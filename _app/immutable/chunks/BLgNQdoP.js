@@ -1,1 +1,0 @@
-import{az as h,ao as k,bb as l,aM as o}from"./DdV8kQem.js";function n(e,a,d=a){h(e,"change",c=>{var r=c?e.defaultChecked:e.checked;d(r)}),(k&&e.defaultChecked!==e.checked||l(a)==null)&&d(e.checked),o(()=>{var c=a();e.checked=!!c})}export{n as b};
