@@ -21,28 +21,28 @@
 	const tocEntries: TocEntry[] = [
 		{
 			id: 'classification-top-k-etalonnage',
-			label: '9. Classification Top-K & Étalonnage',
+			label: 'Classification Top-K & Étalonnage',
 			description:
 				'Exercices 9.1 à 9.20 : Évaluation Top-K, ECE/MCE, Platt Scaling, régression isotonique et limites des métriques.',
 			color: 'epistemic'
 		},
 		{
 			id: 'prediction-conforme-classification',
-			label: '10. Prédiction Conforme en Classification',
+			label: 'Prédiction Conforme en Classification',
 			description:
 				'Exercices 10.1 à 10.20 : Échangeabilité, validité en échantillon fini, scores APS/SAPS et couverture conditionnelle.',
 			color: 'surprise'
 		},
 		{
 			id: 'prediction-conforme-regression',
-			label: '11. Régression Conforme',
+			label: 'Régression Conforme',
 			description:
 				'Exercices 11.1 à 11.20 : Intervalles constants et adaptatifs, CQR, bootstrap et métriques d’évaluation.',
 			color: 'agent'
 		},
 		{
 			id: 'classification-average-k',
-			label: '12. Classification Average-K (Conception)',
+			label: 'Classification Average-K (Conception)',
 			description:
 				'Exercices 12.1 à 12.5 : Optimisation de la taille moyenne contrainte, Lagrangien, règle de seuil et inversion de CDF.',
 			color: 'neutral'
@@ -65,7 +65,7 @@
 		<TableOfContents entries={tocEntries} />
 
 		<!-- ════════════════════════ SECTION 9 ════════════════════════ -->
-		<h2 id="classification-top-k-etalonnage">9. Classification Top-K & Étalonnage</h2>
+		<h2 id="classification-top-k-etalonnage">Classification Top-K & Étalonnage</h2>
 		<p>
 			Cette première série d'exercices aborde les fondements théoriques de l'évaluation Top-K,
 			l'importance de l'étalonnage (calibration) des probabilités prédites, ainsi que les méthodes
@@ -646,7 +646,7 @@
 		</ExercisePanel>
 
 		<!-- ════════════════════════ SECTION 10 ════════════════════════ -->
-		<h2 id="prediction-conforme-classification">10. Prédiction Conforme en Classification</h2>
+		<h2 id="prediction-conforme-classification">Prédiction Conforme en Classification</h2>
 		<p>
 			Cette section se concentre sur le formalisme de la prédiction conforme (Split Conformal)
 			appliquée à la classification multiclasse, avec des garanties théoriques de couverture exactes
@@ -1258,7 +1258,7 @@
 		</ExercisePanel>
 
 		<!-- ════════════════════════ SECTION 11 ════════════════════════ -->
-		<h2 id="prediction-conforme-regression">11. Régression Conforme</h2>
+		<h2 id="prediction-conforme-regression">Régression Conforme</h2>
 		<p>
 			Cette section applique le principe de prédiction conforme au cas continu de la régression,
 			pour construire des intervalles de confiance rigoureux (largeur constante, largeur adaptative
@@ -1876,7 +1876,7 @@
 		</ExercisePanel>
 
 		<!-- ════════════════════════ SECTION 12 ════════════════════════ -->
-		<h2 id="classification-average-k">12. Classification Average-K (Conception)</h2>
+		<h2 id="classification-average-k">Classification Average-K (Conception)</h2>
 		<p>
 			La classification <strong>Average-K</strong> propose un cadre dual de la prédiction conforme.
 			Au lieu de contraindre le risque d'erreur (conduire à une taille d'ensemble variable pour
