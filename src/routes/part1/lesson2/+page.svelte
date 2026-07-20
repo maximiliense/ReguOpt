@@ -513,6 +513,99 @@
 			<LinearRegressionFit />
 		</InteractiveSection>
 
+		<!-- Ajouter après le Callout "Quand la matrice n'est pas inversible" -->
+		<ExpertPanel title="Solution de norme minimale et pseudo‑inverse de Moore‑Penrose">
+			<p>
+				Lorsque <KatexInline formula={String.raw`X^\top X`} /> est singulière, l’équation normale
+				<KatexInline formula={String.raw`X^\top X w = X^\top y`} /> admet une infinité de solutions. Parmi
+				elles, la <strong>solution de plus petite norme</strong> (au sens euclidien) est donnée par
+				la <strong>pseudo‑inverse de Moore‑Penrose</strong>
+				<KatexInline formula={String.raw`X^+`} />.
+			</p>
+
+			<p>
+				Soit la décomposition en valeurs singulières (SVD) de <KatexInline
+					formula={String.raw`X \in \mathbb{R}^{n \times d}`}
+				/> :
+			</p>
+			<KatexBlock formula={String.raw`X = U \Sigma V^\top,`} />
+			<p>
+				où <KatexInline formula={String.raw`U`} /> et <KatexInline formula={String.raw`V`} /> sont orthogonales
+				et <KatexInline formula={String.raw`\Sigma`} /> est une matrice diagonale rectangulaire contenant
+				les valeurs singulières <KatexInline
+					formula={String.raw`\sigma_1 \ge \cdots \ge \sigma_r > 0`}
+				/>, avec <KatexInline formula={String.raw`r = \mathrm{rang}(X)`} />. La pseudo‑inverse
+				s’écrit :
+			</p>
+			<KatexBlock formula={String.raw`X^+ = V \Sigma^+ U^\top,`} />
+			<p>
+				où <KatexInline formula={String.raw`\Sigma^+`} /> est la transposée de <KatexInline
+					formula={String.raw`\Sigma`}
+				/> dans laquelle on a inversé les valeurs singulières non nulles (<KatexInline
+					formula={String.raw`\sigma_i \mapsto 1/\sigma_i`}
+				/>).
+			</p>
+
+			<TheoremBlock number="2.6.1.bis" title="Solution de norme minimale">
+				<p>
+					La solution <KatexInline formula={String.raw`w^+ = X^+ y`} /> est l’unique vecteur de norme
+					minimale parmi toutes les solutions du problème des moindres carrés :
+				</p>
+				<KatexBlock formula={String.raw`\min_{w \in \mathbb{R}^d} \|Xw - y\|^2`} />
+				<p>
+					Autrement dit, <KatexInline formula={String.raw`w^+`} /> vérifie
+					<KatexInline formula={String.raw`X^\top X w^+ = X^\top y`} /> et, pour toute autre solution
+					<KatexInline formula={String.raw`w`} />, on a <KatexInline
+						formula={String.raw`\|w^+\| \le \|w\|`}
+					/>.
+				</p>
+			</TheoremBlock>
+
+			<div class="proof-block">
+				<p><strong>Démonstration (esquisse) :</strong></p>
+				<p>
+					En utilisant la SVD, on a <KatexInline formula={String.raw`X = U \Sigma V^\top`} />. Le
+					problème des moindres carrés se réécrit :
+				</p>
+				<KatexBlock
+					formula={String.raw`\min_{w} \|U \Sigma V^\top w - y\|^2 = \min_{z = V^\top w} \|\Sigma z - U^\top y\|^2`}
+				/>
+				<p>
+					La solution générale en <KatexInline formula={String.raw`z`} /> est donnée par
+					<KatexInline formula={String.raw`z_i = (U^\top y)_i / \sigma_i`} /> pour
+					<KatexInline formula={String.raw`i \le r`} />, tandis que les composantes
+					<KatexInline formula={String.raw`z_i`} /> pour <KatexInline formula={String.raw`i > r`} /> sont
+					arbitraires. La norme <KatexInline formula={String.raw`\|w\| = \|z\|`} /> est minimisée en choisissant
+					<KatexInline formula={String.raw`z_i = 0`} /> pour
+					<KatexInline formula={String.raw`i > r`} />. On obtient ainsi
+					<KatexInline formula={String.raw`w^+ = V \Sigma^+ U^\top y`} />, qui est bien la solution
+					de norme minimale. ∎
+				</p>
+			</div>
+
+			<p>
+				<strong>Lien avec la régularisation Ridge :</strong> La solution Ridge
+				<KatexInline formula={String.raw`w_\lambda^* = (X^\top X + \lambda I_d)^{-1} X^\top y`} />
+				converge vers <KatexInline formula={String.raw`w^+`} /> lorsque
+				<KatexInline formula={String.raw`\lambda \to 0^+`} />, même si
+				<KatexInline formula={String.raw`X^\top X`} /> est singulière. En effet, en utilisant la SVD,
+				on a :
+			</p>
+			<KatexBlock
+				formula={String.raw`
+					w_\lambda^*
+					= V \left( \Sigma^\top \Sigma + \lambda I_d \right)^{-1} \Sigma^\top U^\top y
+					\quad \xrightarrow[\lambda \to 0]{} \quad
+					V \Sigma^+ U^\top y = X^+ y.
+				`}
+			/>
+			<p>
+				Ainsi, la régularisation Ridge peut être interprétée comme une approximation régularisée de
+				la pseudo‑inverse : elle sélectionne la solution de norme minimale tout en stabilisant le
+				calcul numérique lorsque la matrice est mal conditionnée.
+			</p>
+		</ExpertPanel>
+
 		<h3>Régularisation Ridge</h3>
 
 		<p>
@@ -914,15 +1007,20 @@ w_j^*(\lambda)
 			{/snippet}
 		</ExercisePanel>
 
-		<ExercisePanel number="2.4" title="Lipschitz-continuité d'un gradient moyen">
+		<ExercisePanel number="2.4" title="Lipschitz-continuité du gradient d'une moyenne">
 			<p>
-				Montrez que si chaque gradient <KatexInline formula={String.raw`\nabla f_i`} /> est <KatexInline
+				Soit <KatexInline formula={String.raw`f = \frac{1}{n} \sum_{i=1}^n f_i`} />. Démontrez
+				rigoureusement que si chaque gradient <KatexInline formula={String.raw`\nabla f_i`} /> est <KatexInline
 					formula={String.raw`L_i`}
-				/>-Lipschitz continu (au sens de la Définition 2.10), alors le gradient de la moyenne <KatexInline
+				/>-Lipschitz-continu (au sens de la Définition 2.10), alors le gradient <KatexInline
 					formula={String.raw`\nabla f`}
-				/> est <KatexInline formula={String.raw`L`} />-Lipschitz avec /> est <KatexInline
-					formula="L"
-				/>-Lipschitz avec <KatexInline formula={lipschitzLBound} />.
+				/> de la moyenne est <KatexInline formula={String.raw`L`} />-Lipschitz-continu avec <KatexInline
+					formula={lipschitzLBound}
+				/>.
+			</p>
+			<p>
+				<strong>Indice :</strong> Utilisez l'inégalité triangulaire sur la norme de la somme des gradients,
+				puis appliquez l'hypothèse de Lipschitz sur chaque terme.
 			</p>
 			{#snippet solution()}
 				<p>
@@ -930,8 +1028,11 @@ w_j^*(\lambda)
 				</p>
 				<KatexBlock formula={lipschitzSumProof} />
 				<p>
-					ce qui est exactement la définition de la <KatexInline formula="L" />-Lipschitz-continuité
-					de <KatexInline formula="\nabla f" /> avec <KatexInline formula={lipschitzLBound} />. ∎
+					La dernière inégalité s'écrit <KatexInline
+						formula={String.raw`\|\nabla f(x) - \nabla f(y)\| \le L \|x - y\|`}
+					/>, ce qui est exactement la définition de la
+					<KatexInline formula="L" />-Lipschitz-continuité de <KatexInline formula="\nabla f" />,
+					avec <KatexInline formula={lipschitzLBound} />. ∎
 				</p>
 			{/snippet}
 		</ExercisePanel>
@@ -940,11 +1041,46 @@ w_j^*(\lambda)
 	<!-- ================= BIBLIOGRAPHY ================= -->
 	<Bibliography>
 		<BibElement
+			authors={['Hoerl, A. E.', 'Kennard, R. W.']}
+			year={1970}
+			title="Ridge regression: Biased estimation for nonorthogonal problems"
+			journal="Technometrics, 12(1), 55-67."
+			link="https://doi.org/10.1080/00401706.1970.10488634"
+		/>
+		<BibElement
+			authors={['Tibshirani, R.']}
+			year={1996}
+			title="Regression shrinkage and selection via the lasso"
+			journal="Journal of the Royal Statistical Society, Series B, 58(1), 267-288."
+			link="https://doi.org/10.1111/j.2517-6161.1996.tb02080.x"
+		/>
+		<BibElement
 			authors={['Boyd, S.', 'Vandenberghe, L.']}
 			year={2004}
 			title="Convex Optimization"
 			journal="Cambridge University Press."
 			link="https://web.stanford.edu/~boyd/cvxbook/"
+		/>
+		<BibElement
+			authors={['Zou, H.', 'Hastie, T.']}
+			year={2005}
+			title="Regularization and variable selection via the elastic net"
+			journal="Journal of the Royal Statistical Society, Series B."
+			link="https://doi.org/10.1111/j.1467-9868.2005.00503.x"
+		/>
+		<BibElement
+			authors={['Hastie, T.', 'Tibshirani, R.', 'Friedman, J.']}
+			year={2009}
+			title="The Elements of Statistical Learning: Data Mining, Inference, and Prediction"
+			journal="Springer Series in Statistics. New York: Springer."
+			link="https://hastie.su.domains/ElemStatLearn/"
+		/>
+		<BibElement
+			authors={['Golub, G. H.', 'Van Loan, C. F.']}
+			year={2013}
+			title="Matrix Computations (4th ed.)"
+			journal="Johns Hopkins University Press."
+			link="https://www.cs.cornell.edu/cv/GVL4/"
 		/>
 		<BibElement
 			authors={[
@@ -960,11 +1096,11 @@ w_j^*(\lambda)
 			journal="Advances in Neural Information Processing Systems (NeurIPS)."
 		/>
 		<BibElement
-			authors={['Zou, H.', 'Hastie, T.']}
-			year={2005}
-			title="Regularization and variable selection via the elastic net"
-			journal="Journal of the Royal Statistical Society, Series B."
-			link="https://doi.org/10.1111/j.1467-9868.2005.00503.x"
+			authors={['Bottou, L.', 'Curtis, F. E.', 'Nocedal, J.']}
+			year={2018}
+			title="Optimization methods for large-scale machine learning"
+			journal="SIAM Review, 60(2), 223-311."
+			link="https://doi.org/10.1137/16M1080173"
 		/>
 	</Bibliography>
 </PageTemplate>
