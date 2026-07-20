@@ -3,49 +3,90 @@
 	import ContourPlot from '$lib/components/charts/ContourPlot.svelte';
 	import Slider from '$lib/components/controls/Slider.svelte';
 	import SliderGrid from '$lib/components/layout/SliderGrid.svelte';
-	import { ellipse } from '$lib/math/test-functions.js';
+	import { paraboloid, rosenbrock } from '$lib/math/test-functions.js';
 
-	// Use the elliptic function to show how momentum helps in narrow valleys
-	const f = ellipse.f;
-	const grad = ellipse.grad;
-	const domain: [[number, number], [number, number]] = [
-		[-6, 6],
-		[-5, 5]
+	interface FuncOption {
+		key: string;
+		label: string;
+		func: typeof paraboloid;
+		defaultAlpha: number;
+		defaultBeta: number;
+		startPoint: [number, number];
+		color: string;
+	}
+
+	const funcOptions: FuncOption[] = [
+		{
+			key: 'rosenbrock',
+			label: 'Rosenbrock ((1−x)² + 100(y−x²)²)',
+			func: rosenbrock,
+			defaultAlpha: 0.001,
+			defaultBeta: 0.9,
+			startPoint: [-1.5, 2],
+			color: '#ef4444'
+		},
+		{
+			key: 'paraboloid',
+			label: 'Paraboloïde (x² + 4y²)',
+			func: paraboloid,
+			defaultAlpha: 0.1,
+			defaultBeta: 0.9,
+			startPoint: [-2.5, 2],
+			color: '#3b82f6'
+		}
 	];
 
-	const startX = -5;
-	const startY = 4;
-	let alpha = $state(0.3);
+	let selectedKey = $state('rosenbrock');
+	let alpha = $state(0.001);
 	let beta = $state(0.9);
-	let maxSteps = $state(120);
+	let maxSteps = $state(150);
 	let playing = $state(false);
 	let visibleSteps = $state(0);
 	let animTimer: ReturnType<typeof setInterval> | null = null;
 
-	function runGD(maxIter: number): { x: number; y: number }[] {
+	const opt = $derived(funcOptions.find((o) => o.key === selectedKey)!);
+	const func = $derived(opt.func);
+	const f = $derived(func.f);
+	const grad = $derived(func.grad);
+
+	const defaultDomain: [[number, number], [number, number]] = [
+		[-3, 3],
+		[-3, 3]
+	];
+	const domain = $derived(func.domain ?? defaultDomain);
+	const startPoint = $derived(opt.startPoint);
+	const startX = $derived(startPoint[0]);
+	const startY = $derived(startPoint[1]);
+
+	// Ajustement dynamique des limites du slider d'apprentissage selon la fonction
+	const alphaMin = $derived(selectedKey === 'rosenbrock' ? 0.0001 : 0.01);
+	const alphaMax = $derived(selectedKey === 'rosenbrock' ? 0.005 : 1.0);
+	const alphaStep = $derived(selectedKey === 'rosenbrock' ? 0.0001 : 0.01);
+
+	const gdPoints = $derived.by(() => {
 		let x = startX,
 			y = startY;
 		const traj = [{ x, y }];
-		for (let k = 0; k < maxIter; k++) {
+		for (let k = 0; k < maxSteps; k++) {
 			const [gx, gy] = grad(x, y);
-			if (Math.sqrt(gx * gx + gy * gy) < 1e-8) break;
+			if (Math.hypot(gx, gy) < 1e-8) break;
 			x -= alpha * gx;
 			y -= alpha * gy;
 			if (!isFinite(f(x, y))) break;
 			traj.push({ x, y });
 		}
 		return traj;
-	}
+	});
 
-	function runMomentum(maxIter: number): { x: number; y: number }[] {
+	const momPoints = $derived.by(() => {
 		let x = startX,
 			y = startY;
 		let vx = 0,
 			vy = 0;
 		const traj = [{ x, y }];
-		for (let k = 0; k < maxIter; k++) {
+		for (let k = 0; k < maxSteps; k++) {
 			const [gx, gy] = grad(x, y);
-			if (Math.sqrt(gx * gx + gy * gy) < 1e-8) break;
+			if (Math.hypot(gx, gy) < 1e-8) break;
 			vx = beta * vx + gx;
 			vy = beta * vy + gy;
 			x -= alpha * vx;
@@ -54,16 +95,10 @@
 			traj.push({ x, y });
 		}
 		return traj;
-	}
-
-	const gdPoints = $derived(runGD(maxSteps));
-	const momPoints = $derived(runMomentum(maxSteps));
+	});
 
 	const maxAvailableSteps = $derived(Math.max(gdPoints.length, momPoints.length));
 
-	// Count sign flips of the y-velocity as a crude "oscillation score" —
-	// gives a concrete number backing up the visual zig-zag you see for
-	// classic GD in a narrow valley.
 	function oscillationScore(points: { x: number; y: number }[]): number {
 		let flips = 0;
 		let prevDy: number | null = null;
@@ -84,16 +119,11 @@
 	const gdOscillations = $derived(oscillationScore(gdPoints));
 	const momOscillations = $derived(oscillationScore(momPoints));
 
-	// ── Responsive layout: TWO columns share the row's width, not the whole
-	// container's — this is what was causing the panels to wrap onto separate
-	// rows: chartW was previously min(containerWidth, 340) applied to EACH of
-	// the two panels, so two side-by-side 340px charts plus padding/gap easily
-	// exceeded the available row width well before 700px viewports. ──
 	let rowWidth = $state(680);
 	const gapPx = 16;
 	const chartW = $derived(Math.max(140, Math.min(320, (rowWidth - gapPx) / 2 - 24)));
 	const pad = 30;
-	const aspect = (domain[1][1] - domain[1][0]) / (domain[0][1] - domain[0][0]);
+	const aspect = $derived((domain[1][1] - domain[1][0]) / (domain[0][1] - domain[0][0]));
 	const chartH = $derived(Math.round(chartW * aspect));
 
 	function projX(x: number) {
@@ -129,7 +159,6 @@
 		visibleSteps >= gdPoints.length - 1 && visibleSteps >= momPoints.length - 1
 	);
 
-	// ── Autoplay: reveal both trajectories simultaneously, step by step ──
 	function resetAnim() {
 		stopAnim();
 		visibleSteps = 0;
@@ -158,10 +187,17 @@
 		playing = false;
 	}
 
+	function selectFunc(key: string) {
+		stopAnim();
+		selectedKey = key;
+		const o = funcOptions.find((o2) => o2.key === key)!;
+		alpha = o.defaultAlpha;
+		beta = o.defaultBeta;
+		resetAnim();
+	}
+
 	onDestroy(stopAnim);
 
-	// Any change to alpha/beta/maxSteps invalidates the current animation —
-	// restart from the beginning so what's shown always matches the sliders.
 	$effect(() => {
 		void alpha;
 		void beta;
@@ -172,12 +208,24 @@
 
 <div class="mom-demo">
 	<h3 class="section-title">Momentum : amortissement des oscillations</h3>
-	<p class="sub-title">Fonction elliptique (x²/4 + y²) — vallée étroite, GD classique oscille</p>
+
+	<div class="options-row">
+		{#each funcOptions as o}
+			<button
+				class:active={selectedKey === o.key}
+				style:--opt-color={o.color}
+				onclick={() => selectFunc(o.key)}
+			>
+				<span class="dot" style:background={o.color}></span>
+				{o.label}
+			</button>
+		{/each}
+	</div>
 
 	<SliderGrid>
 		<div class="grp">
 			<div class="gttl">Taux d'apprentissage</div>
-			<Slider bind:value={alpha} min={0.01} max={1} step={0.01} label="α" />
+			<Slider bind:value={alpha} min={alphaMin} max={alphaMax} step={alphaStep} label="α" />
 		</div>
 		<div class="grp">
 			<div class="gttl">Momentum</div>
@@ -207,7 +255,7 @@
 		<div class="panel">
 			<span class="panel-label" style="--clr: #94a3b8">GD classique (sans momentum)</span>
 			<div class="chart-container" style:width="{chartW}px" style:height="{chartH}px">
-				<ContourPlot {f} {domain} width={chartW} height={chartH} numLevels={6} />
+				<ContourPlot {f} {domain} width={chartW} height={chartH} numLevels={8} />
 				<svg class="traj-overlay" width={chartW} height={chartH}>
 					<path d={gdPathVisible} fill="none" stroke="#94a3b8" stroke-width="2.5" opacity="0.9" />
 					<circle
@@ -232,7 +280,7 @@
 		<div class="panel panel-highlighted">
 			<span class="panel-label" style="--clr: #22c55e">GD + Momentum (β = {beta.toFixed(2)})</span>
 			<div class="chart-container" style:width="{chartW}px" style:height="{chartH}px">
-				<ContourPlot {f} {domain} width={chartW} height={chartH} numLevels={6} />
+				<ContourPlot {f} {domain} width={chartW} height={chartH} numLevels={8} />
 				<svg class="traj-overlay" width={chartW} height={chartH}>
 					<path d={momPathVisible} fill="none" stroke="#22c55e" stroke-width="2.5" opacity="0.9" />
 					<circle
@@ -286,8 +334,9 @@
 	</div>
 
 	<div class="callout-intuition">
-		💡 β proche de 0 → comportement du GD classique. β &gt; 0.9 → accélération dans la direction de
-		la vallée, oscillations réduites.
+		💡 Sur la vallée étroite (Ellipse) ou courbée (Rosenbrock), le GD classique accumule des
+		oscillations orthogonales massives. Le Momentum additionne les gradients successifs dans la
+		direction du minimum et annule les oscillations parasites.
 	</div>
 </div>
 
@@ -308,11 +357,43 @@
 		text-align: center;
 	}
 
-	.sub-title {
-		margin: 0;
-		color: var(--color-text-muted);
+	.options-row {
+		display: flex;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+		justify-content: center;
+		margin-bottom: 0.2rem;
+	}
+
+	.options-row button {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		padding: 0.3rem 0.75rem;
+		border-radius: 999px;
+		border: 1px solid var(--color-border);
+		background: transparent;
+		cursor: pointer;
 		font-size: 0.8rem;
-		text-align: center;
+		color: var(--color-text, inherit);
+		transition: all 0.15s ease;
+	}
+
+	.options-row button .dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		display: inline-block;
+	}
+
+	.options-row button.active {
+		background: var(--opt-color);
+		color: white;
+		border-color: var(--opt-color);
+	}
+
+	.options-row button.active .dot {
+		background: white !important;
 	}
 
 	.grp {
@@ -366,9 +447,6 @@
 		color: var(--color-text-muted);
 	}
 
-	/* Two fixed, equal columns — this is the actual fix for "same row":
-	   each panel's chart is sized from THIS row's own measured width, split
-	   in half, not from the whole widget's width applied to each panel. */
 	.panels-row {
 		display: grid;
 		grid-template-columns: 1fr 1fr;

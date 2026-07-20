@@ -122,13 +122,20 @@
 	const strongConvRate = '\\mathcal{O}(e^{-\\mu k / L})';
 
 	// Linear regression GD
-	const lrGradUpdate =
-		'w^{(k+1)} &= w^{(k)} - \\alpha \\nabla f(w^{(k)}) \\\\ &= w^{(k)} - \\frac{\\alpha}{n} X^{\\top}(X w^{(k)} - y) \\\\ &= w^{(k)} - \\frac{\\alpha}{n} \\sum_{i=1}^n (w^{(k)\\top} x_i - y_i) x_i';
+	const lrGradUpdate = String.raw`\begin{aligned}
+	w^{(k+1)} &= w^{(k)} - \alpha \nabla f(w^{(k)}) \\
+	&= w^{(k)} - \frac{\alpha}{n} X^{\top}(X w^{(k)} - y) \\
+	&= w^{(k)} - \frac{\alpha}{n} \sum_{i=1}^n (w^{(k)\top} x_i - y_i) x_i
+	\end{aligned}`;
+
 	const lrCost = '\\mathcal{O}(n d)';
 
 	// Momentum
-	const momVel =
-		'v^{(k+1)} &= \\beta v^{(k)} + \\nabla f(x^{(k)}) \\\\ x^{(k+1)} &= x^{(k)} - \\alpha v^{(k+1)}';
+	const momVel = String.raw`\begin{aligned}
+	v^{(k+1)} &= \beta v^{(k)} + \nabla f(x^{(k)}) \\
+	x^{(k+1)} &= x^{(k)} - \alpha v^{(k+1)}
+	\end{aligned}`;
+
 	const momBeta = '\\beta \\in [0, 1)';
 	const momTypical = '\\beta = 0.9';
 	const momUnrolled = 'v^{(k)} = \\sum_{i=0}^{k-1} \\beta^i \\nabla f(x^{(k-1-i)})';
@@ -334,7 +341,8 @@
 		</Callout>
 
 		<ExampleBlock number="3.5" title="Descente de gradient pour les moindres carrés">
-			Pour <KatexInline formula={'f(w) = \\frac{1}{2n} \\|y - Xw\\|^2'} />, l'algorithme devient :
+			Pour <KatexInline formula={String.raw`f(w) = \frac{1}{2n} \|y - Xw\|^2`} />, l'algorithme
+			devient :
 			<KatexBlock formula={lrGradUpdate} />
 
 			<strong>Coût par itération :</strong>
