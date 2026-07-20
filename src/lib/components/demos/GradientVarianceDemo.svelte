@@ -113,7 +113,8 @@
 	<!-- Now a proper sibling block below the chart, not a stray flex item inside it -->
 	<div class="reference-note">
 		Variance théorique ∝ <span class="formula">σ² / B</span> — doublez B, divisez la variance par 2 (échelle
-		logarithmique sur le graphique pour rester lisible malgré la décroissance rapide)
+		logarithmique sur le graphique pour rester lisible malgré la décroissance rapide). Il s'agit ici d'un
+		exemple avec un modèle à deux paramètres.
 	</div>
 
 	<div class="insight-box">

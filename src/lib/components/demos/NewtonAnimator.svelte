@@ -87,7 +87,7 @@
 	];
 	const domain = $derived(func.domain ?? defaultDomain);
 	const aspect = $derived((domain[1][1] - domain[1][0]) / (domain[0][1] - domain[0][0]));
-	const width = $derived(Math.min(containerWidth, 480));
+	const width = $derived(containerWidth);
 	const height = $derived(Math.round(width * aspect));
 
 	interface NewtonPoint {
@@ -545,7 +545,7 @@
 	}
 
 	.description {
-		max-width: 480px;
+		max-width: 100%;
 		font-size: 0.78rem;
 		color: var(--color-text-muted);
 		text-align: center;

@@ -17,10 +17,10 @@
 	import LassoPathExplorer from '$lib/components/demos/LassoPathExplorer.svelte';
 	import ElasticNetBlend from '$lib/components/demos/ElasticNetBlend.svelte';
 	import ShrinkageFactorDemo from '$lib/components/demos/ShrinkageFactorDemo.svelte';
-	import CrossValidationSelector from '$lib/components/demos/CrossValidationSelector.svelte';
 
 	import { getPageByPath, getNextPage, getPrevPage, type PageMeta } from '$lib/navigation.js';
 	import { createPageTracker } from '$lib/stores/progress.svelte';
+	import IllConditionningExplosionDemo from '$lib/components/demos/IllConditionningExplosionDemo.svelte';
 
 	const meta = getPageByPath('/part2/lesson4');
 	const tracker = createPageTracker(meta as PageMeta);
@@ -269,6 +269,167 @@
 			</ul>
 		</Callout>
 	</TheorySection>
+
+	<ExpertPanel title="Analyse Mathématique : Conditionnement et Régularisation L2">
+		<p>
+			Le phénomène d'explosion visuel de la démonstration ci-dessous s'explique entièrement par la
+			théorie du
+			<strong>conditionnement matriciel</strong>. Dans cette section, nous allons dériver
+			rigoureusement les équations qui régissent cette instabilité et démontrer mathématiquement
+			comment la régularisation Ridge résout ce problème.
+		</p>
+
+		<h3>1. Le conditionnement d'un système linéaire</h3>
+		<p>
+			Considérons le système linéaire <KatexInline formula={String.raw`Ax = y`} /> où
+			<KatexInline formula={String.raw`A \in \mathbb{R}^{d \times d}`} /> est une matrice inversible.
+			Supposons que le vecteur de mesures
+			<KatexInline formula={String.raw`y`} /> soit entaché d'une perturbation minuscule <KatexInline
+				formula={String.raw`\delta y`}
+			/> (erreur de mesure ou d'arrondi numérique), entraînant une erreur <KatexInline
+				formula={String.raw`\delta x`}
+			/> sur la solution retrouvée, de sorte que :
+		</p>
+		<KatexBlock
+			formula={String.raw`A(x + \delta x) = y + \delta y \implies A\delta x = \delta y \implies \delta x = A^{-1}\delta y`}
+		/>
+		<p>
+			En prenant la norme de ces équations et en appliquant les propriétés de sous-multiplicativité
+			des normes matricielles induites, on obtient d'une part :
+		</p>
+		<KatexBlock formula={String.raw`\|\delta x\| \le \|A^{-1}\| \cdot \|\delta y\|`} />
+		<p>
+			Et d'autre part, comme <KatexInline formula={String.raw`\|y\| \le \|A\| \cdot \|x\|`} />, on a
+			l'inégalité <KatexInline formula={String.raw`\frac{1}{\|x\|} \le \frac{\|A\|}{\|y\|}`} />. En
+			combinant ces deux résultats, on obtient la borne de sensibilité fondamentale :
+		</p>
+		<KatexBlock
+			formula={String.raw`\frac{\|\delta x\|}{\|x\|} \le \left( \|A\| \cdot \|A^{-1}\| \right) \frac{\|\delta y\|}{\|y\|}`}
+		/>
+
+		<p>
+			Le terme multiplicatif entre parenthèses est défini comme le <strong>conditionnement</strong>
+			de la matrice <KatexInline formula={String.raw`A`} />, noté <KatexInline
+				formula={String.raw`\kappa(A)`}
+			/> :
+		</p>
+		<DefinitionBlock number="8.4" title="Conditionnement d'une matrice (norme L2)">
+			<KatexBlock
+				formula={String.raw`\kappa(A) = \|A\|_2 \cdot \|A^{-1}\|_2 = \frac{\sigma_{\max}(A)}{\sigma_{\min}(A)}`}
+			/>
+			<p>
+				Où <KatexInline formula={String.raw`\sigma_{\max}(A)`} /> et <KatexInline
+					formula={String.raw`\sigma_{\min}(A)`}
+				/> sont respectivement la plus grande et la plus petite valeur singulière de <KatexInline
+					formula={String.raw`A`}
+				/>.
+			</p>
+		</DefinitionBlock>
+
+		<h3>2. Application numérique à l'exemple de la démo</h3>
+		<p>Dans notre démonstration interactive, nous utilisons la matrice :</p>
+		<KatexBlock
+			formula={String.raw`A = \begin{pmatrix} 1.98 & 2.00 \\ 1.00 & 1.01 \end{pmatrix}, \quad \det(A) = 1.98 \times 1.01 - 2.00 \times 1.00 = -0.0002`}
+		/>
+		<p>
+			L'inversion exacte de <KatexInline formula={String.raw`A`} /> par la formule analytique de la comatrice
+			donne :
+		</p>
+		<KatexBlock
+			formula={String.raw`A^{-1} = \frac{1}{-0.0002} \begin{pmatrix} 1.01 & -2.00 \\ -1.00 & 1.98 \end{pmatrix} = \begin{pmatrix} -5050 & 10000 \\ 5000 & -9900 \end{pmatrix}`}
+		/>
+		<p>
+			Les valeurs singulières de <KatexInline formula={String.raw`A`} /> sont environ <KatexInline
+				formula={String.raw`\sigma_{\max} \approx 3.003`}
+			/> et
+			<KatexInline formula={String.raw`\sigma_{\min} \approx 0.000067`} />, ce qui donne un
+			conditionnement gigantesque :
+		</p>
+		<KatexBlock formula={String.raw`\kappa(A) \approx 15\,000`} />
+		<p>
+			Une simple erreur d'arrondi sur la mesure de <KatexInline formula={String.raw`y`} />, passant
+			du vecteur exact <KatexInline formula={String.raw`y = (3.98, 2.01)`} /> à sa version arrondie
+			<KatexInline formula={String.raw`y_{\text{arrondi}} = (4.00, 2.00)`} />, produit une
+			perturbation <KatexInline formula={String.raw`\delta y = (0.02, -0.01)`} /> de norme extrêmement
+			faible :
+			<KatexInline formula={String.raw`\|\delta y\|_2 \approx 0.022`} /> (soit environ <KatexInline
+				formula={String.raw`0.5\%`}
+			/> d'erreur relative). Cependant, l'erreur sur <KatexInline formula={String.raw`x`} /> est projetée
+			dans la direction d'instabilité :
+		</p>
+		<KatexBlock
+			formula={String.raw`\delta x = A^{-1}\delta y = \begin{pmatrix} -5050 & 10000 \\ 5000 & -9900 \end{pmatrix} \begin{pmatrix} 0.02 \\ -0.01 \end{pmatrix} = \begin{pmatrix} -201 \\ 199 \end{pmatrix}`}
+		/>
+		<p>
+			L'erreur induite <KatexInline formula={String.raw`\|\delta x\|_2 \approx 283`} /> est
+			<strong>12 000 fois plus grande</strong>
+			que la perturbation initiale sur
+			<KatexInline formula={String.raw`y`} />, déplaçant la solution estimée de <KatexInline
+				formula={String.raw`x_{\text{vrai}} = (1, 1)`}
+			/> vers <KatexInline formula={String.raw`\hat{x} = (-200, 200)`} />.
+		</p>
+
+		<h3>3. Le problème des équations normales en Apprentissage</h3>
+		<p>
+			Dans un problème de moindres carrés ordinaires (OLS), nous cherchons à minimiser la perte
+			empirique <KatexInline formula={String.raw`\|y - Xw\|_2^2`} />, ce qui conduit à résoudre le
+			système des équations normales :
+		</p>
+		<KatexBlock formula={String.raw`X^\top X w = X^\top y`} />
+		<p>
+			Le conditionnement de la matrice à inverser est le carré de celui de la matrice de design :
+		</p>
+		<KatexBlock formula={String.raw`\kappa(X^\top X) = \kappa(X)^2`} />
+		<p>
+			Si les variables de <KatexInline formula={String.raw`X`} /> présentent une colinéarité même modérée
+			(par exemple <KatexInline formula={String.raw`\kappa(X) \approx 100`} />), alors la matrice
+			des corrélations <KatexInline formula={String.raw`X^\top X`} /> devient extrêmement instable (<KatexInline
+				formula={String.raw`\kappa(X^\top X) \approx 10\,000`}
+			/>). Les coefficients estimés s'envolent alors, compensant des variations microscopiques du
+			bruit par des valeurs de poids gigantesques de signes opposés.
+		</p>
+
+		<h3>4. Comment la régularisation Ridge (L2) stabilise le spectre</h3>
+		<p>
+			La régularisation Ridge modifie les équations normales en introduisant un terme
+			d'amortissement diagonal <KatexInline formula={String.raw`\lambda I`} /> :
+		</p>
+		<KatexBlock formula={String.raw`(X^\top X + \lambda I)w_{\text{Ridge}} = X^\top y`} />
+		<p>
+			Soit <KatexInline formula={String.raw`X^\top X = V D V^\top`} /> la décomposition spectrale (éléments
+			propres) de la matrice symétrique semi-définie positive <KatexInline
+				formula={String.raw`X^\top X`}
+			/>, avec des valeurs propres <KatexInline formula={String.raw`d_i \ge 0`} />. Les valeurs
+			propres de la matrice régularisée deviennent :
+		</p>
+		<KatexBlock formula={String.raw`\text{Sp}(X^\top X + \lambda I) = \{d_i + \lambda\}_{i=1}^d`} />
+		<p>Par conséquent, le nouveau conditionnement du système régularisé s'écrit :</p>
+		<KatexBlock
+			formula={String.raw`\kappa(X^\top X + \lambda I) = \frac{d_{\max} + \lambda}{d_{\min} + \lambda}`}
+		/>
+
+		<Callout type="intuition" title="L'effet de relèvement spectral">
+			Même si la plus petite valeur propre <KatexInline formula={String.raw`d_{\min}`} /> est arbitrairement
+			proche de zéro (en présence de colinéarité parfaite ou lorsque <KatexInline
+				formula={String.raw`p > n`}
+			/>), dès que <KatexInline formula={String.raw`\lambda > 0`} />, la plus petite valeur propre
+			de l'opérateur régularisé est strictement minorée par <KatexInline
+				formula={String.raw`\lambda`}
+			/>. Le conditionnement est alors immédiatement borné supérieurement :
+			<KatexBlock
+				formula={String.raw`\kappa(X^\top X + \lambda I) \le \frac{d_{\max} + \lambda}{\lambda} \approx \frac{d_{\max}}{\lambda}`}
+			/>
+			Ce relèvement spectral stabilise de manière drastique l'inversion numérique, limitant géométriquement
+			l'amplitude des poids et garantissant la robustesse du modèle face aux fluctuations d'échantillonnage.
+			Vous pouvez observer cet effet stabilisateur en direct en manipulant le curseur <KatexInline
+				formula={String.raw`\lambda`}
+			/> de la démo ci-dessous.
+		</Callout>
+
+		<InteractiveSection tag="Démo 8.5 bis - Conditionnement">
+			<IllConditionningExplosionDemo />
+		</InteractiveSection>
+	</ExpertPanel>
 
 	<!-- ═══════════════════════════════════════════ -->
 	<!-- SECTION 3 : Lasso Regression (L1)          -->

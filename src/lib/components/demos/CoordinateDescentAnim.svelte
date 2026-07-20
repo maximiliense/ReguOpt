@@ -5,7 +5,7 @@
 	 */
 	import { onDestroy } from 'svelte';
 	import ContourPlot from '$lib/components/charts/ContourPlot.svelte';
-	import { paraboloid, ellipse } from '$lib/math/test-functions.js';
+	import { paraboloid } from '$lib/math/test-functions.js';
 
 	const skewedQuadratic = {
 		f: (x: number, y: number) => 2 * x * x + 1.8 * x * y + 2 * y * y,
@@ -33,13 +33,6 @@
 			label: 'Paraboloïde (x² + 4y²)',
 			func: paraboloid,
 			color: '#8b5cf6',
-			start: [-2.5, 2.0] as [number, number]
-		},
-		{
-			key: 'ellipse',
-			label: 'Ellipse (x²/4 + y²)',
-			func: ellipse,
-			color: '#06b6d4',
 			start: [-2.5, 2.0] as [number, number]
 		},
 		{
