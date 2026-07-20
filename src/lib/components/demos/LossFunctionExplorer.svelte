@@ -150,18 +150,29 @@
 	let settled = $state(false);
 	let rafId: number | null = null;
 
-	const ETA = 0.15; // fixed step size; stable for the curvature range used by these losses + ridge term
+	let lastTime = 0;
 
-	function tick() {
+	function tick(time: number) {
+		if (!lastTime) lastTime = time;
+
+		const dt = (time - lastTime) / 1000;
+		lastTime = time;
+
 		const g = gradAt(ballZ);
-		if (Math.abs(g) < 0.01) {
+
+		const lr = 2.5; // units / second
+
+		ballZ -= lr * dt * g;
+
+		ballZ = Math.max(xDomain[0], Math.min(xDomain[1], ballZ));
+
+		if (Math.abs(g) < 1e-3) {
 			settled = true;
 		} else {
 			settled = false;
-			const next = ballZ - ETA * g;
-			ballZ = Math.max(xDomain[0], Math.min(xDomain[1], next));
 			trail = [...trail.slice(-40), ballZ];
 		}
+
 		rafId = requestAnimationFrame(tick);
 	}
 

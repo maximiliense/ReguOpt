@@ -48,7 +48,7 @@ export function constantInterval(
 	const m = testPredictions.length;
 	return {
 		lowerBounds: Array.from({ length: m }, (_, i) => testPredictions[i] - halfWidth),
-		upperBounds: Array.from({ length: m }, (_, i) => testPredictions[i] + halfWidth),
+		upperBounds: Array.from({ length: m }, (_, i) => testPredictions[i] + halfWidth)
 	};
 }
 
@@ -62,32 +62,38 @@ export function constantInterval(
 export function adaptiveInterval(
 	calPredictions: number[],
 	calTrue: number[],
-	sigmaEstimates: number[],
+	calSigmaEstimates: number[],
 	testPredictions: number[],
+	testSigmaEstimates: number[],
 	alpha: number,
 	epsilon = 1e-10
 ): PredictionIntervals {
 	const n = calTrue.length;
 
-	// Normalized scores on the calibration set
-	const normalizedScores: number[] = new Array(n);
+	// Normalized conformity scores
+	const normalizedScores = new Array<number>(n);
 	for (let i = 0; i < n; i++) {
-		normalizedScores[i] = Math.abs(calTrue[i] - calPredictions[i]) / (sigmaEstimates[i] + epsilon);
+		normalizedScores[i] =
+			Math.abs(calTrue[i] - calPredictions[i]) / (calSigmaEstimates[i] + epsilon);
 	}
 
 	const qHat = residualQuantile(normalizedScores, alpha);
 
-	// Mean calibration sigma used as reference scale for test predictions
-	let meanSigma = 0;
-	for (let i = 0; i < n; i++) meanSigma += sigmaEstimates[i];
-	meanSigma /= n;
-
-	const halfWidth = qHat * (meanSigma + epsilon);
-
 	const m = testPredictions.length;
+
+	const lowerBounds = new Array<number>(m);
+	const upperBounds = new Array<number>(m);
+
+	for (let i = 0; i < m; i++) {
+		const halfWidth = qHat * (testSigmaEstimates[i] + epsilon);
+
+		lowerBounds[i] = testPredictions[i] - halfWidth;
+		upperBounds[i] = testPredictions[i] + halfWidth;
+	}
+
 	return {
-		lowerBounds: Array.from({ length: m }, (_, i) => testPredictions[i] - halfWidth),
-		upperBounds: Array.from({ length: m }, (_, i) => testPredictions[i] + halfWidth),
+		lowerBounds,
+		upperBounds
 	};
 }
 

@@ -190,35 +190,50 @@
 		<h2 id="introduction">Introduction</h2>
 
 		<p>
-			En apprentissage automatique, les fonctions objectifs à minimiser possèdent une structure
-			particulière — une somme (ou moyenne) de termes indexés par les exemples d'entraînement — qui
-			facilite considérablement leur analyse. Cette leçon établit un principe central : de
-			nombreuses propriétés utiles à l'optimisation (convexité, différentiabilité, coercivité,
-			régularité du gradient) se <strong>transfèrent</strong> automatiquement des termes individuels à
-			la somme. On peut donc étudier chaque terme séparément, puis en déduire des garanties sur le problème
-			global — sans jamais avoir à analyser la fonction complète directement.
+			De nombreuses fonctions objectif utilisées en apprentissage automatique peuvent s'écrire comme
+			une somme (ou une moyenne) de termes, chacun associé à un exemple d'entraînement. Cette
+			structure, appelée <strong>séparabilité</strong>, est au cœur de nombreuses méthodes
+			d'optimisation.
 		</p>
-
-		<p>La forme générale de presque tous les problèmes d'apprentissage supervisé est :</p>
 
 		<KatexBlock formula={fSum} />
 
-		<ul>
-			<li><KatexInline formula={xInRd} /> — le vecteur de paramètres du modèle (poids, biais…)</li>
-			<li>
-				<KatexInline formula={String.raw`n`} /> — le nombre d'exemples d'entraînement
-			</li>
-			<li>
-				<KatexInline formula={fiLoss} /> — la perte sur l'exemple <KatexInline
-					formula={String.raw`i`}
-				/>, qui mesure l'erreur du modèle sur cet exemple précis
-			</li>
-		</ul>
+		<DefinitionBlock title="Définition — Fonction de perte séparable">
+			<p>
+				Une fonction de perte <KatexInline formula={String.raw`f : \mathbb{R}^d \to \mathbb{R}`} /> est
+				<strong>séparable</strong> si elle peut s'écrire sous la forme
+			</p>
+
+			<KatexBlock formula={fSum} />
+
+			<p>où :</p>
+
+			<ul>
+				<li><KatexInline formula={xInRd} /> est le vecteur de paramètres du modèle ;</li>
+				<li>
+					<KatexInline formula={String.raw`n`} /> est le nombre d'exemples d'entraînement ;
+				</li>
+				<li>
+					<KatexInline formula={fiLoss} /> est la perte associée au
+					<KatexInline formula={String.raw`i`} />-ième exemple.
+				</li>
+			</ul>
+		</DefinitionBlock>
+
+		<p>
+			La séparabilité permet d'étudier chaque terme <KatexInline formula={fiLoss} /> indépendamment. Dans
+			de nombreux cas, des propriétés telles que la convexité, la différentiabilité, la coercivité ou
+			la régularité du gradient se <strong>transmettent</strong> naturellement des fonctions individuelles
+			à leur somme. Il devient alors possible de démontrer ces propriétés localement, puis d'en déduire
+			des garanties sur la fonction objectif entière. En outre, la séparabilité permettra de construire
+			des algorithmes d'optimisation comme la descente de gradient stochastique.
+		</p>
 
 		<Callout type="intuition" title="Pourquoi cette structure ?">
-			L'idée centrale est que la qualité globale du modèle est la moyenne de ses performances sur
-			chaque exemple individuellement. Cette décomposition en somme permet de transférer les
-			propriétés de chaque terme individuel à la fonction totale — c'est l'objet de cette leçon.
+			La qualité globale du modèle est évaluée en agrégeant les erreurs commises sur chaque exemple
+			d'entraînement. Cette décomposition en somme est précisément ce qui rend possibles les preuves
+			de cette leçon ainsi que les algorithmes de descente de gradient stochastique (SGD) et leurs
+			variantes.
 		</Callout>
 
 		<p>
@@ -248,7 +263,7 @@
 				Soit <KatexInline formula={omegaSym} /> un ensemble convexe. Si les fonctions <KatexInline
 					formula={String.raw`f_1, f_2, \dots, f_n`}
 				/> sont toutes convexes sur <KatexInline formula={omegaSym} />, alors toute combinaison
-				linéaire à coefficients positifs :
+				linéaire à coefficients positifs (i.e. combinaison convexe) :
 			</p>
 			<KatexBlock formula={sumConvexFormula} />
 			<p>
