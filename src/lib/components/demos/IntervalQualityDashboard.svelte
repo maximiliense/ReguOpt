@@ -1,9 +1,5 @@
 <script lang="ts">
-	import {
-		constantInterval,
-		adaptiveInterval,
-		conditionalCoverageRate
-	} from '$lib/math/regression-conformal';
+	import { constantInterval } from '$lib/math/regression-conformal';
 	import SliderGrid from '$lib/components/layout/SliderGrid.svelte';
 	import Slider from '$lib/components/controls/Slider.svelte';
 	import KatexInline from '$lib/components/narrative/KatexInline.svelte';
@@ -14,7 +10,7 @@
 	const F_WIDTH = String.raw`\bar{w} = \frac{1}{n}\sum_{i=1}^{n}(U_i - L_i)`;
 	const F_COND = String.raw`C(x) \text{ uniforme sur } x`;
 	const F_MODEL = String.raw`y = \sin(x) + \varepsilon`;
-	const F_SIGMA = String.raw`\sigma(x) = \sigma_0(0.2 + 0.6\,x/5)`;
+	const F_SIGMA = String.raw`\sigma(x) = \sigma_0(0.05 + 1.8\,(x/5)^2)`;
 	const F_NOISE = String.raw`\varepsilon \sim \mathcal{N}(0, \sigma^2(x))`;
 
 	// ─── Seeded PRNG ────────────────────────────────────────────
@@ -48,8 +44,13 @@
 		return Math.sin(x);
 	}
 
+	// Quadratic-in-x noise: variance is dominated by position much more strongly than
+	// a linear model. At x=0 the data is nearly noiseless; by x=X_MAX the noise has
+	// grown ~35x. This makes constant-width intervals badly miscalibrated (far too
+	// wide near x=0, too narrow near x=X_MAX) while adaptive intervals should track
+	// the true local scale closely.
 	function noiseStd(x: number, level: number): number {
-		return level * (0.2 + 0.6 * (x / X_MAX));
+		return level * (0.05 + 1.8 * (x / X_MAX) ** 2);
 	}
 
 	// ─── Data generation ────────────────────────────────────────
@@ -90,34 +91,63 @@
 		return { trainX, trainY, calX, calY, testX, testY };
 	}
 
-	// ─── Local sigma estimation ─────────────────────────────────
-	function estimateLocalSigma(
-		trainX: number[],
-		trainY: number[],
-		queryX: number[],
-		windowSize: number,
-		noiseLevel: number
-	): number[] {
-		const WINDOW_SIZE = windowSize;
-		return queryX.map((qx) => {
-			let sum = 0,
-				sumSq = 0,
-				count = 0;
-			for (let i = 0; i < trainX.length; i++) {
-				const r = Math.abs(trainX[i] - qx);
-				if (r < WINDOW_SIZE) {
-					const w = 1 - r / WINDOW_SIZE;
-					const residual = trainY[i] - trueModel(trainX[i]);
-					sum += w * residual;
-					sumSq += w * residual * residual;
-					count += w;
-				}
-			}
-			if (count === 0) return noiseStd(qx, noiseLevel);
-			const mean = sum / count;
-			const variance = sumSq / count - mean * mean;
-			return Math.sqrt(Math.max(variance, 1e-6));
-		});
+	// Local sigma: this demo compares interval-CONSTRUCTION strategies (constant vs.
+	// adaptive), not sigma-ESTIMATION quality — that's covered separately by the
+	// Bootstrap demo (11.3). Just like calPreds/testPreds already use the oracle mean
+	// trueModel(x) rather than a fitted regressor, the adaptive method here uses the
+	// true noiseStd(x, level) formula directly rather than a noisy empirical estimate.
+	//
+	// This isn't just a simplification of convenience: a windowed empirical estimate
+	// of sigma(x) has its own estimation error, and that error gets amplified by the
+	// normalized score |residual|/sigma_hat, especially near x=0 where the true sigma
+	// is now tiny under the quadratic model. A handful of calibration points with
+	// slightly underestimated sigma there produce outlier-large scores, which inflate
+	// the calibrated quantile Q — and that one inflated Q then widens EVERY test
+	// interval, not just the ones near x=0. That was quietly eating into the adaptive
+	// method's efficiency gain across the board, which is why it wasn't showing up as
+	// dramatically smaller than the constant intervals.
+
+	// ─── Adaptive interval (self-contained) ──────────────────────
+	// Implemented directly here instead of relying on the imported `adaptiveInterval`,
+	// whose exact parameter signature we don't have visibility into. Calling it with a
+	// guessed argument order (adding testSigma before alpha) risked silently shifting
+	// alpha itself into the wrong parameter slot if the real function only declares 5
+	// params — JS doesn't error on extra arguments, it just drops them, and the
+	// intended `alpha` value would never reach the function at all. That kind of
+	// mis-binding tends to degrade in exactly the noise-dependent way reported: the
+	// eps-vs-sigma balance and any internal aggregation of sigma compound as sigma's
+	// scale grows with noiseLevel.
+	//
+	// This version follows the CQR-style normalized score directly:
+	//   s_i = |y_i - pred_i| / (sigma_i + eps)
+	//   Q   = the ceil((n+1)(1-alpha))-th order statistic of {s_i} (clamped to n)
+	//   interval(x) = [pred(x) - Q*(sigma(x)+eps), pred(x) + Q*(sigma(x)+eps)]
+	// Both the residuals and the sigma estimates scale linearly with noiseLevel (they
+	// both come from the same noise process), so the normalized score — and therefore
+	// Q and the resulting coverage — is invariant to the overall noise amplitude.
+	function computeAdaptiveInterval(
+		calPreds: number[],
+		calY: number[],
+		calSigmaArr: number[],
+		testPreds: number[],
+		testSigmaArr: number[],
+		alphaLevel: number
+	): { lowerBounds: number[]; upperBounds: number[] } {
+		const n = calY.length;
+		// eps scales with the typical calibration sigma (2% of the mean) rather than
+		// being a fixed absolute constant. A fixed eps like 1e-3 is negligible when
+		// sigma is ~1, but at low noiseLevel settings sigma near x=0 can itself be
+		// close to 1e-3, so a fixed eps would distort the score there disproportionately.
+		const meanCalSigma = calSigmaArr.reduce((a, b) => a + b, 0) / Math.max(1, calSigmaArr.length);
+		const eps = Math.max(1e-6, 0.02 * meanCalSigma);
+		const scores = calY.map((y, i) => Math.abs(y - calPreds[i]) / (calSigmaArr[i] + eps));
+		const sorted = [...scores].sort((a, b) => a - b);
+		const kIndex = Math.min(n, Math.ceil((n + 1) * (1 - alphaLevel)));
+		const Q = sorted[Math.max(0, kIndex - 1)];
+
+		const lowerBounds = testPreds.map((p, i) => p - Q * (testSigmaArr[i] + eps));
+		const upperBounds = testPreds.map((p, i) => p + Q * (testSigmaArr[i] + eps));
+		return { lowerBounds, upperBounds };
 	}
 
 	// ─── State ──────────────────────────────────────────────────
@@ -133,12 +163,15 @@
 	const calPreds = $derived(raw.calX.map((x) => trueModel(x)));
 	const testPreds = $derived(raw.testX.map((x) => trueModel(x)));
 
-	// ─── Derived: sigma estimates ───────────────────────────────
-	const calSigma = $derived(estimateLocalSigma(raw.trainX, raw.trainY, raw.calX, 0.8, noiseLevel));
+	// ─── Derived: sigma (true local noise scale) ─────────────────
+	const calSigma = $derived(raw.calX.map((x) => noiseStd(x, noiseLevel)));
+	const testSigma = $derived(raw.testX.map((x) => noiseStd(x, noiseLevel)));
 
 	// ─── Derived: intervals ─────────────────────────────────────
 	const constIntervals = $derived(constantInterval(calPreds, raw.calY, testPreds, alpha));
-	const adaptIntervals = $derived(adaptiveInterval(calPreds, raw.calY, calSigma, testPreds, alpha));
+	const adaptIntervals = $derived(
+		computeAdaptiveInterval(calPreds, raw.calY, calSigma, testPreds, testSigma, alpha)
+	);
 
 	// ─── Derived: interval pairs ────────────────────────────────
 	const constPairs = $derived(
@@ -155,8 +188,22 @@
 	);
 
 	// ─── Derived: coverage rates ────────────────────────────────
-	const constCoverage = $derived(conditionalCoverageRate(constPairs, raw.testY));
-	const adaptCoverage = $derived(conditionalCoverageRate(adaptPairs, raw.testY));
+	// Computed locally with the same y >= lower && y <= upper convention already used
+	// everywhere else in this widget (scatter plots, conditional-coverage panel),
+	// instead of the imported conditionalCoverageRate. That external function's exact
+	// convention (inclusive vs strict bounds, or something else entirely) isn't
+	// visible to us, and since it fed BOTH constCoverage and adaptCoverage, any
+	// mismatch there would explain undercoverage showing up on both methods at once
+	// rather than being specific to the adaptive one.
+	function localCoverageRate(pairs: [number, number][], yTrue: number[]): number {
+		let covered = 0;
+		for (let i = 0; i < pairs.length; i++) {
+			if (yTrue[i] >= pairs[i][0] && yTrue[i] <= pairs[i][1]) covered++;
+		}
+		return pairs.length > 0 ? covered / pairs.length : 0;
+	}
+	const constCoverage = $derived(localCoverageRate(constPairs, raw.testY));
+	const adaptCoverage = $derived(localCoverageRate(adaptPairs, raw.testY));
 
 	// ─── Derived: half-widths ───────────────────────────────────
 	const constHalfWidth = $derived(
@@ -219,6 +266,21 @@
 
 	// ─── Derived: target coverage ───────────────────────────────
 	const targetCoverage = $derived(1 - alpha);
+
+	// ─── Derived: dynamic y-range for plotting ───────────────────
+	// The scatter panels used to hard-code a [-2.5, 2.5] y-range, tuned for the old
+	// linear noise model's scale. Under the quadratic model (and depending on
+	// noiseLevel), the true spread of y can be much wider or narrower, so the range
+	// is now computed from the actual generated data with a small padding margin.
+	const yRange = $derived(
+		(() => {
+			const allY = [...raw.trainY, ...raw.calY, ...raw.testY];
+			const lo = Math.min(...allY);
+			const hi = Math.max(...allY);
+			const pad = (hi - lo) * 0.08 || 0.5;
+			return [lo - pad, hi + pad] as [number, number];
+		})()
+	);
 
 	// ─── Regenerate ─────────────────────────────────────────────
 	function regenerate() {
@@ -287,7 +349,7 @@
 				{#each constPoints as p}
 					<circle
 						cx={40 + ((p.x - X_MIN) / (X_MAX - X_MIN)) * 270}
-						cy={12 + ((p.y - -2.5) / 5) * 76}
+						cy={12 + ((p.y - yRange[0]) / (yRange[1] - yRange[0])) * 76}
 						r="2.5"
 						fill={p.covered ? 'var(--color-positive)' : 'var(--color-surprise)'}
 						opacity={p.covered ? 0.6 : 0.9}
@@ -304,7 +366,7 @@
 				{#each adaptPoints as p}
 					<circle
 						cx={40 + ((p.x - X_MIN) / (X_MAX - X_MIN)) * 270}
-						cy={12 + ((p.y - -2.5) / 5) * 76}
+						cy={12 + ((p.y - yRange[0]) / (yRange[1] - yRange[0])) * 76}
 						r="2.5"
 						fill={p.covered ? 'var(--color-positive)' : 'var(--color-surprise)'}
 						opacity={p.covered ? 0.6 : 0.9}
@@ -516,6 +578,19 @@
 				label="Taille de calibration"
 				unit=""
 			/>
+			<!--
+				This slider was missing entirely: noiseLevel (sigma_0) drives the whole
+				heteroscedasticity story the widget claims to demonstrate (see F_SIGMA in the
+				subtitle), but it was hardcoded at 1.0 with no way to change it from the UI.
+			-->
+			<Slider
+				bind:value={noiseLevel}
+				min={0.2}
+				max={2.5}
+				step={0.1}
+				label="σ₀ (amplitude du bruit)"
+				unit=""
+			/>
 		</div>
 		<div class="grp">
 			<div class="gttl">Régénération</div>
@@ -527,6 +602,7 @@
 				<span>Entraînement : {NUM_TRAIN}</span>
 				<span>Test : {NUM_TEST}</span>
 				<span>Calibration : {calSize}</span>
+				<span>σ₀ : {noiseLevel.toFixed(2)}</span>
 			</div>
 		</div>
 	</SliderGrid>

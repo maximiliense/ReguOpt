@@ -1,9 +1,5 @@
 <script lang="ts">
-	import {
-		constantInterval,
-		adaptiveInterval,
-		conditionalCoverageRate
-	} from '$lib/math/regression-conformal';
+	import { constantInterval } from '$lib/math/regression-conformal';
 	import SliderGrid from '$lib/components/layout/SliderGrid.svelte';
 	import Slider from '$lib/components/controls/Slider.svelte';
 	import KatexInline from '$lib/components/narrative/KatexInline.svelte';
@@ -20,19 +16,17 @@
 	const CURVE_POINTS = 150;
 	const NUM_TRAIN = 80;
 	const NUM_TEST = 120;
-	const WINDOW_SIZE = 0.8;
 
 	// ─── KaTeX formulas (constants to avoid brace issues) ──────
 	const F_ALPHA = String.raw`1 - \alpha`;
 	const F_CONST = String.raw`[\hat{f}(x) - \hat{q},\ \hat{f}(x) + \hat{q}]`;
-	const F_ADAPT = String.raw`[\hat{f}(x) - \hat{q}\cdot\hat{\sigma}(x),\ \hat{f}(x) + \hat{q}\cdot\hat{\sigma}(x)]`;
+	const F_ADAPT = String.raw`[\hat{f}(x) - \hat{q}\cdot\sigma(x),\ \hat{f}(x) + \hat{q}\cdot\sigma(x)]`;
 	const F_MODEL = String.raw`\hat{f}(x) = \sin(x)`;
-	const F_SIGMA = String.raw`\sigma(x) = \sigma_0(0.2 + 0.6\,x/5)`;
+	const F_SIGMA = String.raw`\sigma(x) = \sigma_0(0.05 + 1.8\,(x/5)^2)`;
 	const F_NOISE = String.raw`y = \sin(x) + \varepsilon,\ \varepsilon \sim \mathcal{N}(0, \sigma(x))`;
 	const F_RESIDUAL = String.raw`|y_i - \hat{f}(x_i)|`;
 	const F_COVERAGE = String.raw`P(y \in C(x)) \geq 1 - \alpha`;
-	const F_SIGMA_EST = String.raw`\hat{\sigma}(x) = \text{std}_{\text{local}}(y_j)`;
-	const F_NORM_SCORE = String.raw`|y_i - \hat{f}(x_i)| / \hat{\sigma}(x_i)`;
+	const F_NORM_SCORE = String.raw`|y_i - \hat{f}(x_i)| / \sigma(x_i)`;
 
 	// ─── Seeded PRNG ────────────────────────────────────────────
 	function mulberry32(seed: number): () => number {
@@ -58,9 +52,12 @@
 		return Math.sin(x);
 	}
 
+	// Quadratic-in-x noise, matching Démo 11.4: variance is dominated by position much
+	// more strongly than a linear model would give. At x=0 the data is nearly
+	// noiseless; by x=X_MAX the noise has grown ~35x. This makes the contrast between
+	// the constant and adaptive bands dramatic rather than subtle.
 	function noiseStd(x: number, level: number): number {
-		// Heteroscedastic noise: std grows linearly with x
-		return level * (0.2 + 0.6 * (x - X_MIN) / (X_MAX - X_MIN));
+		return level * (0.05 + 1.8 * ((x - X_MIN) / (X_MAX - X_MIN)) ** 2);
 	}
 
 	// ─── Data interfaces ────────────────────────────────────────
@@ -116,37 +113,49 @@
 		return { trainX, trainY, calX, calY, testX, testY };
 	}
 
-	// ─── Local sigma estimation (windowed std of residuals) ─────
-	function estimateLocalSigma(
-		trainX: number[],
-		trainY: number[],
-		evalX: number[],
-		windowSize: number,
-		fallback: number
-	): number[] {
-		const sigma = new Array(evalX.length);
-		for (let i = 0; i < evalX.length; i++) {
-			const cx = evalX[i];
-			let sum = 0,
-				sumSq = 0,
-				count = 0;
-			for (let j = 0; j < trainX.length; j++) {
-				if (Math.abs(trainX[j] - cx) <= windowSize) {
-					const r = trainY[j] - trueModel(trainX[j]);
-					sum += r;
-					sumSq += r * r;
-					count++;
-				}
-			}
-			if (count < 3) {
-				sigma[i] = fallback;
-			} else {
-				const mean = sum / count;
-				const variance = sumSq / count - mean * mean;
-				sigma[i] = Math.sqrt(Math.max(variance, 1e-6));
-			}
+	// ─── Adaptive interval (self-contained) ──────────────────────
+	// Implemented directly here rather than through the imported `adaptiveInterval`,
+	// whose exact signature isn't visible to us. The previous version of this file
+	// called that external function and then had to *reverse-engineer* qHat from its
+	// output half-width divided by mean(calSigma) — a strong sign the call was never
+	// on solid footing. This version computes and returns qHat directly, no guessing
+	// required:
+	//   s_i = |y_i - pred_i| / (sigma_i + eps)
+	//   Q   = the ceil((n+1)(1-alpha))-th order statistic of {s_i} (clamped to n)
+	//   interval(x) = [pred(x) - Q*(sigma(x)+eps), pred(x) + Q*(sigma(x)+eps)]
+	function computeAdaptiveInterval(
+		calPreds: number[],
+		calY: number[],
+		calSigmaArr: number[],
+		testPreds: number[],
+		testSigmaArr: number[],
+		alphaLevel: number
+	): { lowerBounds: number[]; upperBounds: number[]; qHat: number; eps: number } {
+		const n = calY.length;
+		// eps scales with the typical calibration sigma rather than being a fixed
+		// absolute constant, so it stays negligible regardless of the noiseLevel slider.
+		const meanCalSigma = calSigmaArr.reduce((a, b) => a + b, 0) / Math.max(1, calSigmaArr.length);
+		const eps = Math.max(1e-6, 0.02 * meanCalSigma);
+		const scores = calY.map((y, i) => Math.abs(y - calPreds[i]) / (calSigmaArr[i] + eps));
+		const sorted = [...scores].sort((a, b) => a - b);
+		const kIndex = Math.min(n, Math.ceil((n + 1) * (1 - alphaLevel)));
+		const Q = sorted[Math.max(0, kIndex - 1)];
+
+		const lowerBounds = testPreds.map((p, i) => p - Q * (testSigmaArr[i] + eps));
+		const upperBounds = testPreds.map((p, i) => p + Q * (testSigmaArr[i] + eps));
+		return { lowerBounds, upperBounds, qHat: Q, eps };
+	}
+
+	// ─── Coverage (self-contained) ────────────────────────────────
+	// Computed locally with the same inclusive convention used for the per-point
+	// `covered` flags elsewhere in this file, instead of the imported
+	// conditionalCoverageRate whose exact convention we can't verify.
+	function localCoverageRate(pairs: [number, number][], yTrue: number[]): number {
+		let covered = 0;
+		for (let i = 0; i < pairs.length; i++) {
+			if (yTrue[i] >= pairs[i][0] && yTrue[i] <= pairs[i][1]) covered++;
 		}
-		return sigma;
+		return pairs.length > 0 ? covered / pairs.length : 0;
 	}
 
 	// ─── State ──────────────────────────────────────────────────
@@ -162,31 +171,27 @@
 	const calPreds = $derived(raw.calX.map((x) => trueModel(x)));
 	const testPreds = $derived(raw.testX.map((x) => trueModel(x)));
 
-	// ─── Derived: sigma estimates ───────────────────────────────
-	const calSigma = $derived(
-		estimateLocalSigma(raw.trainX, raw.trainY, raw.calX, WINDOW_SIZE, noiseLevel)
-	);
-	const adaptSigma = $derived(
-		estimateLocalSigma(raw.trainX, raw.trainY, raw.testX, WINDOW_SIZE, noiseLevel)
-	);
+	// ─── Derived: sigma (true local noise scale) ─────────────────
+	// This demo compares interval-CONSTRUCTION strategies (constant vs. adaptive), not
+	// sigma-ESTIMATION quality — that's covered separately by the Bootstrap demo
+	// (11.3). Just like calPreds/testPreds already use the oracle mean trueModel(x)
+	// rather than a fitted regressor, sigma here uses the true noiseStd(x, level)
+	// formula directly rather than a noisy windowed estimate. This also removes a
+	// real bug the windowed version caused downstream: the adaptive band was being
+	// drawn by indexing a test-point sigma array by *position* while sweeping
+	// *x* smoothly — since raw.testX is never sorted, that picked essentially
+	// unrelated sigma values as x moved across the plot. Calling noiseStd(x, level)
+	// directly at each plotted x sidesteps that indexing problem entirely.
+	const calSigma = $derived(raw.calX.map((x) => noiseStd(x, noiseLevel)));
+	const testSigma = $derived(raw.testX.map((x) => noiseStd(x, noiseLevel)));
 
 	// ─── Derived: constant intervals ────────────────────────────
-	const constIntervals = $derived(
-		constantInterval(calPreds, raw.calY, testPreds, alpha)
-	);
+	const constIntervals = $derived(constantInterval(calPreds, raw.calY, testPreds, alpha));
 
 	// ─── Derived: adaptive intervals ────────────────────────────
 	const adaptIntervals = $derived(
-		adaptiveInterval(calPreds, raw.calY, calSigma, testPreds, alpha)
+		computeAdaptiveInterval(calPreds, raw.calY, calSigma, testPreds, testSigma, alpha)
 	);
-
-	// Adaptive q-hat (normalized quantile) extracted from the half-width
-	// adaptiveInterval computes: halfWidth = qHat * mean(calSigma)
-	const adaptQHat = $derived(() => {
-		const mid = (adaptIntervals.upperBounds[0] - adaptIntervals.lowerBounds[0]) / 2;
-		const meanSigma = calSigma.reduce((a, b) => a + b, 0) / calSigma.length;
-		return mid / (meanSigma + 1e-10);
-	});
 
 	// ─── Derived: coverage rates ────────────────────────────────
 	const constPairs = $derived(
@@ -195,7 +200,7 @@
 			constIntervals.upperBounds[i]
 		]) as [number, number][]
 	);
-	const constCoverage = $derived(conditionalCoverageRate(constPairs, raw.testY));
+	const constCoverage = $derived(localCoverageRate(constPairs, raw.testY));
 
 	const adaptPairs = $derived(
 		raw.testX.map((_, i): [number, number] => [
@@ -203,7 +208,7 @@
 			adaptIntervals.upperBounds[i]
 		]) as [number, number][]
 	);
-	const adaptCoverage = $derived(conditionalCoverageRate(adaptPairs, raw.testY));
+	const adaptCoverage = $derived(localCoverageRate(adaptPairs, raw.testY));
 
 	// ─── Derived: interval widths ───────────────────────────────
 	const constHalfWidth = $derived(
@@ -226,7 +231,9 @@
 				pred: testPreds[i],
 				lower: constIntervals.lowerBounds[i],
 				upper: constIntervals.upperBounds[i],
-				covered: raw.testY[i] >= constIntervals.lowerBounds[i] && raw.testY[i] <= constIntervals.upperBounds[i]
+				covered:
+					raw.testY[i] >= constIntervals.lowerBounds[i] &&
+					raw.testY[i] <= constIntervals.upperBounds[i]
 			};
 		})
 	);
@@ -240,23 +247,17 @@
 				pred: testPreds[i],
 				lower: adaptIntervals.lowerBounds[i],
 				upper: adaptIntervals.upperBounds[i],
-				covered: raw.testY[i] >= adaptIntervals.lowerBounds[i] && raw.testY[i] <= adaptIntervals.upperBounds[i]
+				covered:
+					raw.testY[i] >= adaptIntervals.lowerBounds[i] &&
+					raw.testY[i] <= adaptIntervals.upperBounds[i]
 			};
 		})
 	);
 
 	// ─── Derived: shared Y range ────────────────────────────────
 	const yRange = $derived({
-		min: Math.min(
-			...raw.testY,
-			...constIntervals.lowerBounds,
-			...adaptIntervals.lowerBounds
-		) - 0.3,
-		max: Math.max(
-			...raw.testY,
-			...constIntervals.upperBounds,
-			...adaptIntervals.upperBounds
-		) + 0.3
+		min: Math.min(...raw.testY, ...constIntervals.lowerBounds, ...adaptIntervals.lowerBounds) - 0.3,
+		max: Math.max(...raw.testY, ...constIntervals.upperBounds, ...adaptIntervals.upperBounds) + 0.3
 	});
 
 	// ─── SVG path builders ──────────────────────────────────────
@@ -272,12 +273,7 @@
 		return d;
 	}
 
-	function buildConstantBandPath(
-		q: number,
-		yrMin: number,
-		yrMax: number,
-		offsetX: number
-	): string {
+	function buildConstantBandPath(q: number, yrMin: number, yrMax: number, offsetX: number): string {
 		let d = '';
 		for (let i = 0; i < CURVE_POINTS; i++) {
 			const x = X_MIN + (X_MAX - X_MIN) * (i / (CURVE_POINTS - 1));
@@ -297,28 +293,31 @@
 		return d;
 	}
 
+	// Draws the adaptive band by evaluating sigma at the exact x being plotted via
+	// noiseStd(x, level) — NOT by indexing a data-derived sigma array by position.
+	// The previous version indexed adaptSigma (aligned with the unsorted raw.testX)
+	// by `floor(t * length)` while sweeping x smoothly from 0 to X_MAX, which paired
+	// each plotted x with an essentially unrelated test point's sigma. Calling the
+	// formula directly is both correct and simpler.
 	function buildAdaptiveBandPath(
 		qHat: number,
-		sigmaEst: number[],
+		eps: number,
+		noiseLevelVal: number,
 		yrMin: number,
 		yrMax: number,
 		offsetX: number
 	): string {
 		let d = '';
 		for (let i = 0; i < CURVE_POINTS; i++) {
-			const t = i / (CURVE_POINTS - 1);
-			const idx = Math.min(Math.floor(t * (sigmaEst.length - 1)), sigmaEst.length - 1);
-			const x = X_MIN + (X_MAX - X_MIN) * t;
-			const y = trueModel(x) + qHat * sigmaEst[idx];
+			const x = X_MIN + (X_MAX - X_MIN) * (i / (CURVE_POINTS - 1));
+			const y = trueModel(x) + qHat * (noiseStd(x, noiseLevelVal) + eps);
 			const sx = offsetX + PAD.left + ((x - X_MIN) / (X_MAX - X_MIN)) * INNER_W;
 			const sy = PAD.top + ((yrMax - y) / (yrMax - yrMin)) * INNER_H;
 			d += (i === 0 ? 'M' : 'L') + sx.toFixed(2) + ',' + sy.toFixed(2);
 		}
 		for (let i = CURVE_POINTS - 1; i >= 0; i--) {
-			const t = i / (CURVE_POINTS - 1);
-			const idx = Math.min(Math.floor(t * (sigmaEst.length - 1)), sigmaEst.length - 1);
-			const x = X_MIN + (X_MAX - X_MIN) * t;
-			const y = trueModel(x) - qHat * sigmaEst[idx];
+			const x = X_MIN + (X_MAX - X_MIN) * (i / (CURVE_POINTS - 1));
+			const y = trueModel(x) - qHat * (noiseStd(x, noiseLevelVal) + eps);
 			const sx = offsetX + PAD.left + ((x - X_MIN) / (X_MAX - X_MIN)) * INNER_W;
 			const sy = PAD.top + ((yrMax - y) / (yrMax - yrMin)) * INNER_H;
 			d += 'L' + sx.toFixed(2) + ',' + sy.toFixed(2);
@@ -345,11 +344,16 @@
 	const yTicks = $derived(computeNiceTicks(yRange.min, yRange.max));
 	const curvePathL = $derived(buildTrueModelPath(yRange.min, yRange.max, 0));
 	const curvePathR = $derived(buildTrueModelPath(yRange.min, yRange.max, PLOT_W + 16));
-	const constBandPath = $derived(
-		buildConstantBandPath(constHalfWidth, yRange.min, yRange.max, 0)
-	);
+	const constBandPath = $derived(buildConstantBandPath(constHalfWidth, yRange.min, yRange.max, 0));
 	const adaptBandPath = $derived(
-		buildAdaptiveBandPath(adaptQHat(), adaptSigma, yRange.min, yRange.max, PLOT_W + 16)
+		buildAdaptiveBandPath(
+			adaptIntervals.qHat,
+			adaptIntervals.eps,
+			noiseLevel,
+			yRange.min,
+			yRange.max,
+			PLOT_W + 16
+		)
 	);
 
 	// ─── Derived: outlier counts ────────────────────────────────
@@ -375,8 +379,9 @@
 	<!-- ════════════════ Title ════════════════ -->
 	<h3 class="demo-title">Intervalles de prédiction constants vs adaptatifs</h3>
 	<p class="demo-subtitle">
-		Modèle synthétique <KatexInline formula={F_NOISE} /> avec bruit
-		hétéroscédastique <KatexInline formula={F_SIGMA} />. La variabilité augmente avec x.
+		Modèle synthétique <KatexInline formula={F_NOISE} /> avec bruit hétéroscédastique <KatexInline
+			formula={F_SIGMA}
+		/>. La variabilité augmente fortement avec x.
 	</p>
 
 	<!-- ════════════════ Side-by-side SVG ════════════════ -->
@@ -412,13 +417,9 @@
 				stroke-width="0.8"
 			/>
 			<!-- Title -->
-			<text
-				x={PAD.left}
-				y={PAD.top - 14}
-				font-size="11"
-				font-weight="700"
-				fill="var(--color-text)"
-			>Constant</text>
+			<text x={PAD.left} y={PAD.top - 14} font-size="11" font-weight="700" fill="var(--color-text)"
+				>Constant</text
+			>
 
 			<g clip-path="url(#const-clip)">
 				<!-- Constant band -->
@@ -438,13 +439,7 @@
 				<!-- Test points — covered -->
 				{#each constPoints as p, i (i)}
 					{#if p.covered}
-						<circle
-							cx={mapX(p.x)}
-							cy={mapY(p.y)}
-							r="3"
-							fill="var(--color-text)"
-							opacity="0.35"
-						/>
+						<circle cx={mapX(p.x)} cy={mapY(p.y)} r="3" fill="var(--color-text)" opacity="0.35" />
 					{/if}
 				{/each}
 				<!-- Test points — outliers -->
@@ -556,8 +551,8 @@
 				y={PAD.top - 14}
 				font-size="11"
 				font-weight="700"
-				fill="var(--color-accent, #a78bfa)"
-			>Adaptatif</text>
+				fill="var(--color-accent, #a78bfa)">Adaptatif</text
+			>
 
 			<g clip-path="url(#adapt-clip)">
 				<!-- Adaptive band -->
@@ -728,7 +723,7 @@
 				min={0.2}
 				max={3}
 				step={0.1}
-				label="Niveau de bruit"
+				label="Niveau de bruit (σ₀)"
 				unit=""
 			/>
 		</div>
@@ -741,7 +736,7 @@
 				</span>
 			</div>
 			<div class="dataset-info">
-				<span>Entrainement : {NUM_TRAIN}</span>
+				<span>Entraînement : {NUM_TRAIN}</span>
 				<span>Calibration : {calSize}</span>
 				<span>Test : {NUM_TEST}</span>
 			</div>
@@ -783,13 +778,12 @@
 	<!-- ════════════════ Caption ════════════════ -->
 	<p class="cap">
 		<strong>Comparaison intervalles constants vs adaptatifs.</strong>
-		L'approche constante utilise un quantile unique <KatexInline formula={F_RESIDUAL} /> pour
-		tous les points, produisant une bande de largeur uniforme. L'approche adaptative estime
-		d'abord l'incertitude locale <KatexInline formula={F_SIGMA_EST} /> par fenêtrage, puis
-		normalise les scores de conformité <KatexInline formula={F_NORM_SCORE} /> avant de calculer
-		le quantile. La bande adaptative est plus étroite où le modèle est confiant (faible σ) et
-		plus large où il est incertain (fort σ), offrant une calibration plus fine sous
-		hétéroscédasticité. Dans les deux cas, on vise
+		L'approche constante utilise un quantile unique <KatexInline formula={F_RESIDUAL} /> pour tous les
+		points, produisant une bande de largeur uniforme. L'approche adaptative utilise directement l'écart-type
+		local <KatexInline formula={F_SIGMA} /> du modèle génératif, puis normalise les scores de conformité
+		<KatexInline formula={F_NORM_SCORE} /> avant de calculer le quantile. La bande adaptative est beaucoup
+		plus étroite là où le bruit est faible (près de x=0) et s'élargit là où il est fort (près de x=5),
+		offrant une calibration bien plus fine sous forte hétéroscédasticité. Dans les deux cas, on vise
 		<KatexInline formula={F_COVERAGE} />.
 	</p>
 </div>

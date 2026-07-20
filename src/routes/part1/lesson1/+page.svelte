@@ -109,7 +109,7 @@
 	const taylorOrder2WithZeroGrad =
 		'f(x^* + t d) = f(x^*) + \\frac{t^2}{2} d^\\top H_f(x^*) d + o(t^2)';
 	const cssoStrictIneq =
-		'f(x^* + t d) - f(x^*) \\ge \\frac{t^2}{2}\\, \\mu \\|d\\|^2 + o(t^2) > 0 \\\\text{pour } t \\text{ petit}';
+		'f(x^* + t d) - f(x^*) \\ge \\frac{t^2}{2}\\, \\mu \\|d\\|^2 + o(t^2) > 0 \\text{ pour } t \\text{ petit}';
 
 	// Convexity
 	const convexityIneq = 'f(\\lambda x + (1-\\lambda)y) \\le \\lambda f(x) + (1-\\lambda)f(y)';
@@ -184,7 +184,7 @@
 
 <PageTemplate
 	title={meta?.title ?? "Conditions d'existence d'un minimum"}
-	subtitle="Partie I"
+	subtitle="Optimisation"
 	prev={prevMeta}
 	next={nextMeta}
 >
@@ -201,10 +201,7 @@
 			<em>comment reconnaître et garantir l'existence d'un minimum ?</em>
 		</p>
 
-		<p>
-			Cette leçon construit les outils théoriques nécessaires pour répondre à cette question, en
-			suivant un fil directeur en quatre étapes :
-		</p>
+		<p>À l'issue de ce chapitre, vous devrez être capable de :</p>
 
 		<ol>
 			<li>
@@ -231,14 +228,6 @@
 				soigneusement choisis pour illustrer ce qui se passe quand une hypothèse est violée.
 			</li>
 		</ol>
-
-		<Callout type="intuition" title="Pourquoi ces conditions ?">
-			Tout algorithme d'optimisation doit répondre à deux questions : (1) comment savoir qu'on a
-			trouvé un optimum ? et (2) est-on certain que cet optimum existe ? Cette leçon apporte les
-			outils théoriques pour y répondre. Sans eux, un algorithme de descente de gradient pourrait
-			converger vers un point qui n'est ni un minimum local, ni même un point stable — ou pire, il
-			pourrait chercher indéfiniment un minimum qui n'existe pas.
-		</Callout>
 
 		<h2 id="definitions-preliminaires">Définitions préliminaires</h2>
 

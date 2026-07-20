@@ -48,7 +48,11 @@ export const PAGES: PageMeta[] = RAW_PAGES.map((page, idx) => ({
 export const PART_NAMES: Record<number, string> = {
 	1: 'Partie I — Optimisation',
 	2: 'Partie II — Régularisation',
-	3: 'Partie III — Set-valued'
+	3: 'Partie III — Set-valued',
+	4: 'Partie IV — Optimum de Bayes',
+	5: 'Partie V — Consistance',
+	6: 'Partie VI — Généralisation',
+	7: 'Partie VII — Fonctions de perte'
 };
 
 export function getPageByPath(path: string): PageMeta | undefined {

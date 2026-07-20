@@ -10,10 +10,7 @@
 	<div class="hero">
 		<h1>Régularisation et Optimisation</h1>
 		<p class="tagline">Maximilien Servajean</p>
-		<p>
-			Une exploration interactive des concepts de régularisation et d'optimisation. Construisez
-			votre intuition avant les mathématiques.
-		</p>
+		<p></p>
 
 		<div class="cta-wrapper">
 			<a href={resolve('/intro')} class="start-course-btn">

@@ -11,7 +11,7 @@
 
 	let { collapsed = $bindable(true) }: Props = $props();
 
-	const parts = [1, 2, 3, 4, 5];
+	const parts = [1, 2, 3, 4, 5, 6, 7];
 </script>
 
 {#if collapsed}

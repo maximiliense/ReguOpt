@@ -1,13 +1,21 @@
 <script lang="ts">
-	import { conformityScore1MinusProba, computeQuantileThreshold } from '$lib/math/conformal';
-	import Figure from '$lib/components/charts/Figure.svelte';
+	import {
+		constantInterval,
+		adaptiveInterval,
+		conditionalCoverageRate
+	} from '$lib/math/regression-conformal';
 	import SliderGrid from '$lib/components/layout/SliderGrid.svelte';
 	import Slider from '$lib/components/controls/Slider.svelte';
 	import KatexInline from '$lib/components/narrative/KatexInline.svelte';
 
-	// ─── Constants ──────────────────────────────────────────────
-	const NUM_CLASSES = 4;
-	const MAX_CAL_SIZE = 100;
+	// ─── KaTeX formulas ──────────────────────────────────────────
+	const F_ALPHA = String.raw`1 - \alpha`;
+	const F_COV = String.raw`\frac{1}{n}\sum_{i=1}^{n}\mathbb{1}\{y_i \in C(x_i)\}`;
+	const F_WIDTH = String.raw`\bar{w} = \frac{1}{n}\sum_{i=1}^{n}(U_i - L_i)`;
+	const F_COND = String.raw`C(x) \text{ uniforme sur } x`;
+	const F_MODEL = String.raw`y = \sin(x) + \varepsilon`;
+	const F_SIGMA = String.raw`\sigma(x) = \sigma_0(0.2 + 0.6\,x/5)`;
+	const F_NOISE = String.raw`\varepsilon \sim \mathcal{N}(0, \sigma^2(x))`;
 
 	// ─── Seeded PRNG ────────────────────────────────────────────
 	function mulberry32(seed: number): () => number {
@@ -15,425 +23,853 @@
 			seed |= 0;
 			seed = (seed + 0x6d2b79f5) | 0;
 			let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-			t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+			t = (t + Math.imul(t ^ (t >>> 7), 61 | seed)) ^ t;
 			return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 		};
 	}
-	const rand = mulberry32(77);
 
-	// ─── Softmax ────────────────────────────────────────────────
-	function softmax(logits: number[]): number[] {
-		const maxL = Math.max(...logits);
-		const exps = logits.map((l) => Math.exp(l - maxL));
-		const sum = exps.reduce((a, b) => a + b, 0);
-		return exps.map((e) => e / sum);
+	function boxMuller(rng: () => number): number {
+		let u = 0,
+			v = 0;
+		while (u === 0) u = rng();
+		while (v === 0) v = rng();
+		return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
 	}
 
-	// ─── Generate all calibration points (deterministic) ────────
-	interface CalPoint {
-		probas: number[];
-		label: number;
+	// ─── Data model ─────────────────────────────────────────────
+	const X_MIN = 0;
+	const X_MAX = 5;
+	const NUM_TRAIN = 80;
+	const NUM_TEST = 120;
+	const NUM_CAL_MIN = 20;
+	const NUM_CAL_MAX = 200;
+
+	function trueModel(x: number): number {
+		return Math.sin(x);
 	}
 
-	const ALL_POINTS: CalPoint[] = [];
-	for (let s = 0; s < MAX_CAL_SIZE; s++) {
-		const trueClass = Math.floor(rand() * NUM_CLASSES);
-		const logits = Array.from({ length: NUM_CLASSES }, (_, c) => {
-			if (c === trueClass) return 1.5 + rand() * 3;
-			return -1 + rand() * 3.5;
-		});
-		if (rand() < 0.2) {
-			const decoy = (trueClass + 1 + Math.floor(rand() * (NUM_CLASSES - 1))) % NUM_CLASSES;
-			logits[decoy] += 2 + rand() * 2;
+	function noiseStd(x: number, level: number): number {
+		return level * (0.2 + 0.6 * (x / X_MAX));
+	}
+
+	// ─── Data generation ────────────────────────────────────────
+	function generateData(seed: number, noiseLevel: number, calSize: number) {
+		const rng = mulberry32(seed);
+
+		// Train set
+		const trainX: number[] = [],
+			trainY: number[] = [];
+		for (let i = 0; i < NUM_TRAIN; i++) {
+			const x = X_MIN + (X_MAX - X_MIN) * rng();
+			const y = trueModel(x) + boxMuller(rng) * noiseStd(x, noiseLevel);
+			trainX.push(x);
+			trainY.push(y);
 		}
-		ALL_POINTS.push({ probas: softmax(logits), label: trueClass });
+		trainX.sort((a, b) => a - b);
+
+		// Calibration set
+		const calX: number[] = [],
+			calY: number[] = [];
+		for (let i = 0; i < calSize; i++) {
+			const x = X_MIN + (X_MAX - X_MIN) * rng();
+			const y = trueModel(x) + boxMuller(rng) * noiseStd(x, noiseLevel);
+			calX.push(x);
+			calY.push(y);
+		}
+
+		// Test set
+		const testX: number[] = [],
+			testY: number[] = [];
+		for (let i = 0; i < NUM_TEST; i++) {
+			const x = X_MIN + (X_MAX - X_MIN) * rng();
+			const y = trueModel(x) + boxMuller(rng) * noiseStd(x, noiseLevel);
+			testX.push(x);
+			testY.push(y);
+		}
+
+		return { trainX, trainY, calX, calY, testX, testY };
 	}
 
-	// ─── Reactive state ─────────────────────────────────────────
-	let calSize = $state(30);
-	let alpha = $state(0.1);
-
-	// ─── Measured DOM Width ─────────────────────────────────────
-	let containerWidth = $state(0);
-
-	// ─── Derived: active calibration subset ─────────────────────
-	const calData = $derived(ALL_POINTS.slice(0, calSize));
-
-	// ─── Derived: scores ────────────────────────────────────────
-	const scores = $derived(calData.map((p) => conformityScore1MinusProba(p.probas, p.label)));
-	const sortedScores = $derived([...scores].toSorted((a, b) => a - b));
-
-	// ─── Derived: quantile threshold ────────────────────────────
-	const qHat = $derived(computeQuantileThreshold(scores, alpha));
-	const kIndex = $derived(Math.ceil((calSize + 1) * (1 - alpha)));
-	const kClamped = $derived(Math.min(kIndex, calSize));
-
-	// ─── Derived: score histogram bins ──────────────────────────
-	const NUM_BINS = 20;
-	const scoreMin = $derived(calData.length > 0 ? Math.min(...scores) : 0);
-	const scoreMax = $derived(calData.length > 0 ? Math.max(...scores) : 1);
-	const scoreRange = $derived(scoreMax - scoreMin || 1);
-
-	const binCounts = $derived(
-		(() => {
-			const bins = new Array(NUM_BINS).fill(0);
-			for (const s of scores) {
-				const idx = Math.min(Math.floor(((s - scoreMin) / scoreRange) * NUM_BINS), NUM_BINS - 1);
-				bins[idx]++;
+	// ─── Local sigma estimation ─────────────────────────────────
+	function estimateLocalSigma(
+		trainX: number[],
+		trainY: number[],
+		queryX: number[],
+		windowSize: number,
+		noiseLevel: number
+	): number[] {
+		const WINDOW_SIZE = windowSize;
+		return queryX.map((qx) => {
+			let sum = 0,
+				sumSq = 0,
+				count = 0;
+			for (let i = 0; i < trainX.length; i++) {
+				const r = Math.abs(trainX[i] - qx);
+				if (r < WINDOW_SIZE) {
+					const w = 1 - r / WINDOW_SIZE;
+					const residual = trainY[i] - trueModel(trainX[i]);
+					sum += w * residual;
+					sumSq += w * residual * residual;
+					count += w;
+				}
 			}
-			return bins;
-		})()
+			if (count === 0) return noiseStd(qx, noiseLevel);
+			const mean = sum / count;
+			const variance = sumSq / count - mean * mean;
+			return Math.sqrt(Math.max(variance, 1e-6));
+		});
+	}
+
+	// ─── State ──────────────────────────────────────────────────
+	let alpha = $state(0.05);
+	let calSize = $state(80);
+	let noiseLevel = $state(1.0);
+	let regenCount = $state(0);
+
+	// ─── Derived: raw data ──────────────────────────────────────
+	const raw = $derived(generateData(42 + regenCount * 1000, noiseLevel, calSize));
+
+	// ─── Derived: model predictions ─────────────────────────────
+	const calPreds = $derived(raw.calX.map((x) => trueModel(x)));
+	const testPreds = $derived(raw.testX.map((x) => trueModel(x)));
+
+	// ─── Derived: sigma estimates ───────────────────────────────
+	// Local uncertainty must be estimated at BOTH the calibration points (to compute
+	// the normalized conformity scores during calibration) and the test points (to
+	// actually size each test interval by its own local noise level). The original
+	// widget only ever computed sigma at raw.calX and fed adaptiveInterval nothing
+	// but calSigma + testPreds — testPreds is just sin(testX), a non-monotonic
+	// function of x, so there was no way to recover per-test-point uncertainty from
+	// it. The "adaptive" intervals could not actually adapt to the test region.
+	const calSigma = $derived(estimateLocalSigma(raw.trainX, raw.trainY, raw.calX, 0.8, noiseLevel));
+	const testSigma = $derived(
+		estimateLocalSigma(raw.trainX, raw.trainY, raw.testX, 0.8, noiseLevel)
 	);
 
-	const maxBinCount = $derived(Math.max(...binCounts, 1));
-
-	// ─── Derived: sorted score dots for strip chart ─────────────
-	const stripDots = $derived(
-		sortedScores.map((s, i) => {
-			const rank = i + 1;
-			const isThreshold = rank === kClamped;
-			const isBelow = rank < kClamped;
-			return { score: s, rank, isThreshold, isBelow };
-		})
+	// ─── Derived: intervals ─────────────────────────────────────
+	const constIntervals = $derived(constantInterval(calPreds, raw.calY, testPreds, alpha));
+	// NOTE: passing testSigma so the interval half-width can vary per test point.
+	// If your `regression-conformal` module expects a different argument order,
+	// adjust this call to match — the important fix is that a per-test-point sigma
+	// is computed and supplied at all, not the exact position in the signature.
+	const adaptIntervals = $derived(
+		adaptiveInterval(calPreds, raw.calY, calSigma, testPreds, testSigma, alpha)
 	);
 
-	// ─── Derived: quantile info ─────────────────────────────────
-	const kValue = $derived(calData.length > 0 ? sortedScores[kClamped - 1] : 0);
+	// ─── Derived: interval pairs ────────────────────────────────
+	const constPairs = $derived(
+		raw.testX.map((_, i): [number, number] => [
+			constIntervals.lowerBounds[i],
+			constIntervals.upperBounds[i]
+		]) as [number, number][]
+	);
+	const adaptPairs = $derived(
+		raw.testX.map((_, i): [number, number] => [
+			adaptIntervals.lowerBounds[i],
+			adaptIntervals.upperBounds[i]
+		]) as [number, number][]
+	);
 
-	// ─── Layout constants ────────────────────────────────────────
-	const HIST_HEIGHT = 160;
-	const HIST_PAD = { top: 15, right: 12, bottom: 30, left: 36 };
-	const STRIP_HEIGHT = 40;
-	const STRIP_PAD = { top: 4, right: 12, bottom: 4, left: 36 };
+	// ─── Derived: coverage rates ────────────────────────────────
+	const constCoverage = $derived(conditionalCoverageRate(constPairs, raw.testY));
+	const adaptCoverage = $derived(conditionalCoverageRate(adaptPairs, raw.testY));
 
-	// ─── Derived Metrics Based on Client Layout Width ───────────
-	const activeWidth = $derived(containerWidth || 600);
-	const plotW = $derived(Math.max(0, activeWidth - HIST_PAD.left - HIST_PAD.right));
-	const plotH = $derived(HIST_HEIGHT - HIST_PAD.top - HIST_PAD.bottom);
-	const baseline = $derived(HIST_PAD.top + plotH);
-	const stripPlotW = $derived(Math.max(0, activeWidth - STRIP_PAD.left - STRIP_PAD.right));
+	// ─── Derived: half-widths ───────────────────────────────────
+	const constHalfWidth = $derived(
+		(constIntervals.upperBounds[0] - constIntervals.lowerBounds[0]) / 2
+	);
+	const constAvgWidth = $derived(
+		constIntervals.upperBounds.reduce((s, u, i) => s + (u - constIntervals.lowerBounds[i]), 0) /
+			constIntervals.upperBounds.length
+	);
+	const adaptAvgWidth = $derived(
+		adaptIntervals.upperBounds.reduce((s, u, i) => s + (u - adaptIntervals.lowerBounds[i]), 0) /
+			adaptIntervals.upperBounds.length
+	);
 
-	// ─── Safe Formula Strings for KaTeX ─────────────────────────
-	const formulaQHat = String.raw`\hat{q}`;
-	const formulaRank = String.raw`\lceil(n+1)(1-\alpha)\rceil`;
-	const formulaExpression = String.raw`\hat{q} = \text{sorted\_scores}[\lceil(n+1)(1-\alpha)\rceil - 1]`;
+	// ─── Derived: per-point status ──────────────────────────────
+	const constPoints = $derived(
+		raw.testX.map((x, i) => ({
+			x,
+			y: raw.testY[i],
+			pred: testPreds[i],
+			lower: constIntervals.lowerBounds[i],
+			upper: constIntervals.upperBounds[i],
+			covered:
+				raw.testY[i] >= constIntervals.lowerBounds[i] &&
+				raw.testY[i] <= constIntervals.upperBounds[i],
+			halfWidth: (constIntervals.upperBounds[i] - constIntervals.lowerBounds[i]) / 2
+		}))
+	);
+	const adaptPoints = $derived(
+		raw.testX.map((x, i) => ({
+			x,
+			y: raw.testY[i],
+			pred: testPreds[i],
+			lower: adaptIntervals.lowerBounds[i],
+			upper: adaptIntervals.upperBounds[i],
+			covered:
+				raw.testY[i] >= adaptIntervals.lowerBounds[i] &&
+				raw.testY[i] <= adaptIntervals.upperBounds[i],
+			halfWidth: (adaptIntervals.upperBounds[i] - adaptIntervals.lowerBounds[i]) / 2
+		}))
+	);
+
+	// ─── Derived: conditional coverage (binary 0/1) per x ───────
+	const constCondPoints = $derived(
+		raw.testX.map((x, i) => ({
+			x,
+			covered: constPoints[i].covered ? 1 : 0
+		}))
+	);
+	const adaptCondPoints = $derived(
+		raw.testX.map((x, i) => ({
+			x,
+			covered: adaptPoints[i].covered ? 1 : 0
+		}))
+	);
+
+	// ─── Derived: width histogram bins ──────────────────────────
+	const constWidths = $derived(constPoints.map((p) => p.halfWidth));
+	const adaptWidths = $derived(adaptPoints.map((p) => p.halfWidth));
+
+	// ─── Derived: target coverage ───────────────────────────────
+	const targetCoverage = $derived(1 - alpha);
+
+	// ─── Regenerate ─────────────────────────────────────────────
+	function regenerate() {
+		regenCount++;
+	}
 </script>
 
-<!-- The root element captures width reactively, removing shared state collapse -->
-<div class="quantile-viz" bind:clientWidth={containerWidth}>
-	<!-- ═══════════ Theory summary ═══════════ -->
-	<div class="theory">
-		<p>
-			Le seuil <KatexInline formula={formulaQHat} /> est le
-			<KatexInline formula={formulaRank} />-ème plus petit score de conformité sur l'ensemble de
-			calibration. Ici, avec <KatexInline formula={`n = ${calSize}`} /> et
-			<KatexInline formula={`\\alpha = ${alpha.toFixed(2)}`} /> :
-		</p>
-		<div class="formula-box">
-			<KatexInline formula={formulaExpression} />
-			= <strong>{kValue.toFixed(4)}</strong>
+<div class="dashboard">
+	<h3 class="demo-title">Qualité des intervalles de prédiction</h3>
+	<p class="demo-subtitle">
+		Comparaison entre intervalles constants et adaptatifs sur le modèle
+		<KatexInline formula={F_MODEL} />, <KatexInline formula={F_NOISE} />,
+		<KatexInline formula={F_SIGMA} />. Métriques : couverture empirique
+		<KatexInline formula={F_COV} />, largeur moyenne
+		<KatexInline formula={F_WIDTH} />, et uniformité conditionnelle
+		<KatexInline formula={F_COND} />.
+	</p>
+
+	<!-- ═══════════════════════════════════════════════════ -->
+	<!-- METRIQUE 1 — Taux de couverture                    -->
+	<!-- ═══════════════════════════════════════════════════ -->
+	<div class="metric-block">
+		<h4 class="metric-heading">1. Taux de couverture empirique</h4>
+
+		<!-- Progress bars côte à côte -->
+		<div class="progress-row">
+			<div class="progress-card">
+				<div class="progress-label">
+					<span class="method-tag const-tag">Constant</span>
+				</div>
+				<div class="progress-bar-track">
+					<div class="progress-bar-fill" style="width: {constCoverage * 100}%"></div>
+				</div>
+				<div class="progress-values">
+					<span class="value {constCoverage >= targetCoverage - 0.05 ? 'ok' : 'low'}">
+						{(constCoverage * 100).toFixed(1)}%
+					</span>
+					<span class="target">cible {(targetCoverage * 100).toFixed(0)}%</span>
+				</div>
+			</div>
+
+			<div class="progress-card">
+				<div class="progress-label">
+					<span class="method-tag adapt-tag">Adaptatif</span>
+				</div>
+				<div class="progress-bar-track">
+					<div class="progress-bar-fill adapt-fill" style="width: {adaptCoverage * 100}%"></div>
+				</div>
+				<div class="progress-values">
+					<span class="value {adaptCoverage >= targetCoverage - 0.05 ? 'ok' : 'low'}">
+						{(adaptCoverage * 100).toFixed(1)}%
+					</span>
+					<span class="target">cible {(targetCoverage * 100).toFixed(0)}%</span>
+				</div>
+			</div>
 		</div>
-		<p>
-			L'indice du quantile est
-			<KatexInline
-				formula={`\\lceil(${calSize}+1)\\times(1-${alpha.toFixed(2)})\\rceil = ${kClamped}`}
-			/>. Ce sont les <strong>{kClamped} plus petits scores</strong> (en violet) qui déterminent le seuil.
-		</p>
-	</div>
 
-	<!-- ═══════════ Strip chart of sorted scores ═══════════ -->
-	<div class="panel-title">Scores de calibration triés — chaque point est un échantillon</div>
-
-	<svg
-		viewBox={`0 0 ${activeWidth} ${STRIP_HEIGHT}`}
-		width="100%"
-		height={STRIP_HEIGHT}
-		role="img"
-		aria-label="Diagramme des scores triés"
-	>
-		{#each stripDots as dot, i (i)}
-			{@const dotX = STRIP_PAD.left + (i / Math.max(1, calSize - 1)) * stripPlotW}
-			<circle
-				cx={dotX.toFixed(1)}
-				cy={STRIP_HEIGHT / 2}
-				r={dot.isThreshold ? 5 : 3.5}
-				fill={dot.isThreshold
-					? '#8b5cf6'
-					: dot.isBelow
-						? 'var(--color-belief, #3b82f6)'
-						: 'var(--color-border, #e5e7eb)'}
-				opacity={dot.isThreshold ? 1 : dot.isBelow ? 0.7 : 0.35}
-				stroke={dot.isThreshold ? '#7c3aed' : 'none'}
-				stroke-width={dot.isThreshold ? 2 : 0}
-			/>
-		{/each}
-
-		{#if qHat !== Infinity && calSize > 1}
-			{@const qX = STRIP_PAD.left + ((kClamped - 1) / (calSize - 1)) * stripPlotW}
-			<line
-				x1={qX.toFixed(1)}
-				y1={STRIP_PAD.top}
-				x2={qX.toFixed(1)}
-				y2={STRIP_HEIGHT - STRIP_PAD.bottom}
-				stroke="#8b5cf6"
-				stroke-width="2"
-				stroke-dasharray="4,2"
-			/>
-		{/if}
-	</svg>
-
-	<!-- ═══════════ Histogram ═══════════ -->
-	<div class="panel-title">Distribution des scores de conformité</div>
-
-	<Figure type="chart" containerWidth={activeWidth}>
-		<svg
-			viewBox={`0 0 ${activeWidth} ${HIST_HEIGHT}`}
-			width="100%"
-			height={HIST_HEIGHT}
-			role="img"
-			aria-label="Histogramme des scores de conformité"
-		>
-			<!-- Grid lines -->
-			{#each [0, 0.25, 0.5, 0.75, 1] as tick (tick)}
-				{@const ty = HIST_PAD.top + plotH * (1 - tick)}
-				<line
-					x1={HIST_PAD.left}
-					y1={ty}
-					x2={activeWidth - HIST_PAD.right}
-					y2={ty}
-					stroke="var(--color-border, #e5e7eb)"
-					stroke-width="1"
-					stroke-dasharray="3,3"
-					opacity="0.5"
-				/>
-				<text
-					x={HIST_PAD.left - 6}
-					y={ty + 4}
-					text-anchor="end"
-					font-size="9"
-					font-family="var(--font-mono, monospace)"
-					fill="var(--color-text-muted, #6b7280)"
+		<!-- Mini scatter de couverture -->
+		<div class="scatter-row">
+			<svg class="mini-scatter" viewBox="0 0 320 100" preserveAspectRatio="xMidYMid meet">
+				<rect class="plot-bg" width="320" height="100" rx="4" />
+				<line x1="40" y1="95" x2="310" y2="95" stroke="var(--color-border)" />
+				<text x="175" y="9" fill="var(--color-text-muted)" font-size="9" text-anchor="middle"
+					>Constant — points couverts vs non couverts</text
 				>
-					{tick.toFixed(2)}
-				</text>
-			{/each}
-
-			<!-- Baseline -->
-			<line
-				x1={HIST_PAD.left}
-				y1={baseline}
-				x2={activeWidth - HIST_PAD.right}
-				y2={baseline}
-				stroke="var(--color-border, #e5e7eb)"
-				stroke-width="1"
-			/>
-
-			<!-- Bars -->
-			{#each binCounts as count, i (i)}
-				{@const bW = plotW / NUM_BINS}
-				{@const bX = HIST_PAD.left + i * bW}
-				{@const bH = (count / maxBinCount) * plotH}
-				{@const binLeft = scoreMin + (i / NUM_BINS) * scoreRange}
-				{@const isBelow = binLeft <= qHat}
-
-				<!-- Shade the region below threshold -->
-				{#if isBelow}
-					<rect
-						x={bX}
-						y={HIST_PAD.top}
-						width={bW}
-						height={plotH}
-						fill="var(--color-belief, #3b82f6)"
-						opacity="0.06"
+				{#each constPoints as p}
+					<circle
+						cx={40 + ((p.x - X_MIN) / (X_MAX - X_MIN)) * 270}
+						cy={12 + ((p.y - -2.5) / 5) * 76}
+						r="2.5"
+						fill={p.covered ? 'var(--color-positive)' : 'var(--color-surprise)'}
+						opacity={p.covered ? 0.6 : 0.9}
 					/>
-				{/if}
+				{/each}
+			</svg>
 
-				<rect
-					x={bX}
-					y={baseline - bH}
-					width={Math.max(0, bW - 1)}
-					height={Math.max(0, bH)}
-					fill={isBelow ? 'var(--color-belief, #3b82f6)' : 'var(--color-border, #e5e7eb)'}
-					opacity={isBelow ? 0.6 : 0.25}
-					rx="1"
-				/>
-			{/each}
-
-			<!-- Quantile threshold line -->
-			{#if qHat !== Infinity}
-				{@const qNorm = (qHat - scoreMin) / scoreRange}
-				{@const qX = HIST_PAD.left + Math.min(1, Math.max(0, qNorm)) * plotW}
-				<line
-					x1={qX}
-					y1={HIST_PAD.top}
-					x2={qX}
-					y2={baseline}
-					stroke="#8b5cf6"
-					stroke-width="2"
-					stroke-dasharray="5,3"
-				/>
-				<text
-					x={qX}
-					y={HIST_PAD.top - 4}
-					text-anchor="middle"
-					font-size="10"
-					font-family="var(--font-mono, monospace)"
-					fill="#8b5cf6"
-					font-weight="700"
+			<svg class="mini-scatter" viewBox="0 0 320 100" preserveAspectRatio="xMidYMid meet">
+				<rect class="plot-bg" width="320" height="100" rx="4" />
+				<line x1="40" y1="95" x2="310" y2="95" stroke="var(--color-border)" />
+				<text x="175" y="9" fill="var(--color-text-muted)" font-size="9" text-anchor="middle"
+					>Adaptatif — points couverts vs non couverts</text
 				>
-					q̂ = {qHat.toFixed(3)}
-				</text>
-			{/if}
-
-			<!-- X-axis labels -->
-			{#each Array.from({ length: 6 }, (_, i) => i) as ti (ti)}
-				{@const xVal = scoreMin + (ti / 5) * scoreRange}
-				{@const xPx = HIST_PAD.left + (ti / 5) * plotW}
-				<text
-					x={xPx}
-					y={baseline + 16}
-					text-anchor="middle"
-					font-size="9"
-					font-family="var(--font-mono, monospace)"
-					fill="var(--color-text-muted, #6b7280)"
-				>
-					{xVal.toFixed(2)}
-				</text>
-			{/each}
-		</svg>
-	</Figure>
-
-	<!-- ═══════════ Key stats ═══════════ -->
-	<div class="stats-row">
-		<div class="stat-card">
-			<div class="stat-label">Taille calibration</div>
-			<div class="stat-value">{calSize}</div>
-		</div>
-		<div class="stat-card">
-			<div class="stat-label">Indice quantile k</div>
-			<div class="stat-value">{kClamped}</div>
-		</div>
-		<div class="stat-card highlight">
-			<div class="stat-label">Seuil q̂</div>
-			<div class="stat-value">{qHat === Infinity ? '∞' : qHat.toFixed(4)}</div>
-		</div>
-		<div class="stat-card">
-			<div class="stat-label">Garantie</div>
-			<div class="stat-value">1-α = {(1 - alpha).toFixed(2)}</div>
+				{#each adaptPoints as p}
+					<circle
+						cx={40 + ((p.x - X_MIN) / (X_MAX - X_MIN)) * 270}
+						cy={12 + ((p.y - -2.5) / 5) * 76}
+						r="2.5"
+						fill={p.covered ? 'var(--color-positive)' : 'var(--color-surprise)'}
+						opacity={p.covered ? 0.6 : 0.9}
+					/>
+				{/each}
+			</svg>
 		</div>
 	</div>
 
-	<!-- ═══════════ Controls ═══════════ -->
+	<!-- ═══════════════════════════════════════════════════ -->
+	<!-- METRIQUE 2 — Largeur moyenne des intervalles       -->
+	<!-- ═══════════════════════════════════════════════════ -->
+	<div class="metric-block">
+		<h4 class="metric-heading">2. Largeur moyenne des intervalles</h4>
+
+		<!-- Barres de largeur -->
+		<div class="bar-row">
+			<div class="bar-card">
+				<span class="method-tag const-tag">Constant</span>
+				<div class="bar-track">
+					<div class="bar-fill" style="width: {(constAvgWidth / 4) * 100}%"></div>
+				</div>
+				<div class="bar-value">{constAvgWidth.toFixed(3)}</div>
+			</div>
+
+			<div class="bar-card">
+				<span class="method-tag adapt-tag">Adaptatif</span>
+				<div class="bar-track">
+					<div class="bar-fill adapt-fill" style="width: {(adaptAvgWidth / 4) * 100}%"></div>
+				</div>
+				<div class="bar-value">{adaptAvgWidth.toFixed(3)}</div>
+			</div>
+		</div>
+
+		<!-- Histogramme SVG des largeurs -->
+		<div class="hist-row">
+			<svg class="histogram" viewBox="0 0 320 100" preserveAspectRatio="xMidYMid meet">
+				<rect class="plot-bg" width="320" height="100" rx="4" />
+				<text x="175" y="9" fill="var(--color-text-muted)" font-size="9" text-anchor="middle"
+					>Distribution des demi-largeurs — Constant</text
+				>
+				{#each Array.from({ length: 15 }, (_, i) => i) as binIdx}
+					{@const binMin = constHalfWidth * 0.5 + binIdx * ((constHalfWidth * 1.2) / 15)}
+					{@const binMax = binMin + (constHalfWidth * 1.2) / 15}
+					{@const binCount = constWidths.filter((w) => w >= binMin && w < binMax).length}
+					{@const barH = (binCount / constWidths.length) * 70}
+					<rect
+						x={35 + binIdx * 19}
+						y={88 - barH}
+						width="17"
+						height={barH}
+						fill="var(--color-belief)"
+						opacity="0.6"
+						rx="1"
+					/>
+				{/each}
+			</svg>
+
+			<svg class="histogram" viewBox="0 0 320 100" preserveAspectRatio="xMidYMid meet">
+				<rect class="plot-bg" width="320" height="100" rx="4" />
+				<text x="175" y="9" fill="var(--color-text-muted)" font-size="9" text-anchor="middle"
+					>Distribution des demi-largeurs — Adaptatif</text
+				>
+				{#each Array.from({ length: 15 }, (_, i) => i) as binIdx}
+					{@const binMin = 0 + binIdx * ((adaptAvgWidth * 2.5) / 15)}
+					{@const binMax = binMin + (adaptAvgWidth * 2.5) / 15}
+					{@const binCount = adaptWidths.filter((w) => w >= binMin && w < binMax).length}
+					{@const barH = (binCount / adaptWidths.length) * 70}
+					<rect
+						x={35 + binIdx * 19}
+						y={88 - barH}
+						width="17"
+						height={barH}
+						fill="var(--color-accent, #a78bfa)"
+						opacity="0.6"
+						rx="1"
+					/>
+				{/each}
+			</svg>
+		</div>
+	</div>
+
+	<!-- ═══════════════════════════════════════════════════ -->
+	<!-- METRIQUE 3 — Efficacité conditionnelle             -->
+	<!-- ═══════════════════════════════════════════════════ -->
+	<div class="metric-block">
+		<h4 class="metric-heading">3. Efficacité conditionnelle</h4>
+		<p class="metric-desc">
+			Couverture binaire (1 = couverte, 0 = non couverte) en fonction de
+			<span class="mono">x</span>. Une couverture uniforme se traduit par une densité de points
+			couverts homogène sur toutes les régions.
+		</p>
+
+		<div class="scatter-row">
+			<svg class="cond-scatter" viewBox="0 0 320 110" preserveAspectRatio="xMidYMid meet">
+				<rect class="plot-bg" width="320" height="110" rx="4" />
+				<line x1="40" y1="90" x2="310" y2="90" stroke="var(--color-border)" />
+				<line x1="40" y1="20" x2="40" y2="90" stroke="var(--color-border)" />
+				<text x="175" y="9" fill="var(--color-text-muted)" font-size="9" text-anchor="middle"
+					>Constant — couverture par région</text
+				>
+				<text x="175" y="105" fill="var(--color-text-muted)" font-size="8" text-anchor="middle"
+					>x</text
+				>
+				<text
+					x="14"
+					y="55"
+					fill="var(--color-text-muted)"
+					font-size="8"
+					text-anchor="middle"
+					transform="rotate(-90,14,55)">couverture</text
+				>
+				{#each constCondPoints as p}
+					<circle
+						cx={40 + ((p.x - X_MIN) / (X_MAX - X_MIN)) * 265}
+						cy={p.covered === 1 ? 25 : 80}
+						r="3"
+						fill={p.covered === 1 ? 'var(--color-positive)' : 'var(--color-surprise)'}
+						opacity={p.covered === 1 ? 0.5 : 0.85}
+					/>
+				{/each}
+			</svg>
+
+			<svg class="cond-scatter" viewBox="0 0 320 110" preserveAspectRatio="xMidYMid meet">
+				<rect class="plot-bg" width="320" height="110" rx="4" />
+				<line x1="40" y1="90" x2="310" y2="90" stroke="var(--color-border)" />
+				<line x1="40" y1="20" x2="40" y2="90" stroke="var(--color-border)" />
+				<text x="175" y="9" fill="var(--color-text-muted)" font-size="9" text-anchor="middle"
+					>Adaptatif — couverture par région</text
+				>
+				<text x="175" y="105" fill="var(--color-text-muted)" font-size="8" text-anchor="middle"
+					>x</text
+				>
+				<text
+					x="14"
+					y="55"
+					fill="var(--color-text-muted)"
+					font-size="8"
+					text-anchor="middle"
+					transform="rotate(-90,14,55)">couverture</text
+				>
+				{#each adaptCondPoints as p}
+					<circle
+						cx={40 + ((p.x - X_MIN) / (X_MAX - X_MIN)) * 265}
+						cy={p.covered === 1 ? 25 : 80}
+						r="3"
+						fill={p.covered === 1 ? 'var(--color-positive)' : 'var(--color-surprise)'}
+						opacity={p.covered === 1 ? 0.5 : 0.85}
+					/>
+				{/each}
+			</svg>
+		</div>
+	</div>
+
+	<!-- ═══════════════════════════════════════════════════ -->
+	<!-- TABLEAU RÉCAPITULATIF                               -->
+	<!-- ═══════════════════════════════════════════════════ -->
+	<div class="summary-section">
+		<h4 class="summary-title">Récapitulatif des scores</h4>
+		<table class="summary-table">
+			<thead>
+				<tr>
+					<th>Méthode</th>
+					<th>Couverture</th>
+					<th>Largeur moy.</th>
+					<th>Demi-largeur</th>
+					<th>Écart à la cible</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr>
+					<td class="method-cell">
+						<span class="method-tag const-tag">Constant</span>
+					</td>
+					<td class="num-cell {constCoverage >= targetCoverage - 0.05 ? 'ok' : 'low'}">
+						{(constCoverage * 100).toFixed(1)}%
+					</td>
+					<td class="num-cell">{constAvgWidth.toFixed(3)}</td>
+					<td class="num-cell">{constHalfWidth.toFixed(3)}</td>
+					<td class="num-cell">{(Math.abs(constCoverage - targetCoverage) * 100).toFixed(2)} pp</td>
+				</tr>
+				<tr>
+					<td class="method-cell">
+						<span class="method-tag adapt-tag">Adaptatif</span>
+					</td>
+					<td class="num-cell {adaptCoverage >= targetCoverage - 0.05 ? 'ok' : 'low'}">
+						{(adaptCoverage * 100).toFixed(1)}%
+					</td>
+					<td class="num-cell">{adaptAvgWidth.toFixed(3)}</td>
+					<td class="num-cell">{(adaptAvgWidth / 2).toFixed(3)}</td>
+					<td class="num-cell">{(Math.abs(adaptCoverage - targetCoverage) * 100).toFixed(2)} pp</td>
+				</tr>
+			</tbody>
+		</table>
+	</div>
+
+	<!-- ═══════════════════════════════════════════════════ -->
+	<!-- CONTRÔLES                                           -->
+	<!-- ═══════════════════════════════════════════════════ -->
 	<SliderGrid variant="outline">
 		<div class="grp">
-			<div class="gttl">Taille de l'ensemble de calibration (n)</div>
-			<Slider bind:value={calSize} min={5} max={MAX_CAL_SIZE} step={1} label="n" />
+			<div class="gttl">Paramètres</div>
+			<Slider bind:value={alpha} min={0.01} max={0.5} step={0.01} label="α (alpha)" unit="" />
+			<Slider
+				bind:value={calSize}
+				min={NUM_CAL_MIN}
+				max={NUM_CAL_MAX}
+				step={1}
+				label="Taille de calibration"
+				unit=""
+			/>
+			<!--
+				This slider was missing entirely: noiseLevel (sigma_0) drives the whole
+				heteroscedasticity story the widget claims to demonstrate (see F_SIGMA in the
+				subtitle), but it was hardcoded at 1.0 with no way to change it from the UI.
+			-->
+			<Slider
+				bind:value={noiseLevel}
+				min={0.2}
+				max={2.5}
+				step={0.1}
+				label="σ₀ (amplitude du bruit)"
+				unit=""
+			/>
 		</div>
 		<div class="grp">
-			<div class="gttl">Niveau de signification (α)</div>
-			<Slider bind:value={alpha} min={0.01} max={0.3} step={0.01} label="α" />
+			<div class="gttl">Régénération</div>
+			<div class="regen-wrap">
+				<button class="regen-btn" onclick={regenerate}> 🔄 Régénérer les données </button>
+				<span class="regen-hint">Semence : {42 + regenCount * 1000}</span>
+			</div>
+			<div class="dataset-info">
+				<span>Entraînement : {NUM_TRAIN}</span>
+				<span>Test : {NUM_TEST}</span>
+				<span>Calibration : {calSize}</span>
+				<span>σ₀ : {noiseLevel.toFixed(2)}</span>
+			</div>
 		</div>
 	</SliderGrid>
 
+	<!-- ═══════════════════════════════════════════════════ -->
+	<!-- LÉGENDE                                            -->
+	<!-- ═══════════════════════════════════════════════════ -->
+	<div class="legend">
+		<div class="legend-item">
+			<span class="legend-swatch legend-const"></span>
+			<span class="legend-text">Intervalle constant</span>
+		</div>
+		<div class="legend-item">
+			<span class="legend-swatch legend-adapt"></span>
+			<span class="legend-text">Intervalle adaptatif</span>
+		</div>
+		<div class="legend-item">
+			<span class="legend-swatch legend-covered"></span>
+			<span class="legend-text">Point couvert</span>
+		</div>
+		<div class="legend-item">
+			<span class="legend-swatch legend-outlier"></span>
+			<span class="legend-text">Point non couvert</span>
+		</div>
+	</div>
+
 	<p class="cap">
-		Ce visualiseur montre comment le seuil conformel
-		<KatexInline formula={formulaQHat} /> évolue avec la taille de l'ensemble de calibration et le niveau
-		de signification <KatexInline formula="\alpha" />. Le diagramme trié montre chaque score
-		individuel; les points en bleu sont en dessous du seuil et déterminent
-		<KatexInline formula={formulaQHat} />. L'histogramme illustre la distribution complète des
-		scores avec la région incluse ombrée en bleu.
+		<strong>Leçon 11 — Intervalles de prédiction · Régression conformelle.</strong>
+		Le taux de couverture empirique mesure si l'intervalle respecte le niveau de confiance
+		<KatexInline formula={F_ALPHA} />. La largeur moyenne reflète la précision des intervalles.
+		L'efficacité conditionnelle vérifie si la couverture est uniforme indépendamment de la région de
+		l'espace d'entrée.
 	</p>
 </div>
 
 <style>
-	.quantile-viz {
+	.dashboard {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+		width: 100%;
+		max-width: 880px;
+		margin: 0 auto;
+	}
+
+	/* ─── Title ─── */
+	.demo-title {
+		margin: 0;
+		font-size: 1.1rem;
+		font-weight: 700;
+		color: var(--color-text);
+	}
+
+	.demo-subtitle {
+		margin: 0;
+		font-size: 0.85rem;
+		color: var(--color-text-muted);
+		line-height: 1.5;
+	}
+
+	/* ─── Metric block ─── */
+	.metric-block {
 		display: flex;
 		flex-direction: column;
 		gap: 0.6rem;
-		padding: 1rem;
-		border: 1px solid var(--color-border, #e5e7eb);
-		border-radius: 8px;
-		width: 100%;
-		box-sizing: border-box;
+		padding: 0.8rem;
+		border-radius: var(--radius-md, 8px);
+		border: 1px solid var(--color-border);
+		background: var(--color-surface-2, transparent);
 	}
 
-	/* ── Theory ──────────────────────────── */
-	.theory {
-		font-size: 0.85rem;
-		line-height: 1.6;
-		color: var(--color-text-muted, #6b7280);
-		padding: 0.75rem;
-		background: var(--color-surface-2, #f9fafb);
-		border-radius: 6px;
+	.metric-heading {
+		margin: 0;
+		font-size: 0.92rem;
+		font-weight: 700;
+		color: var(--color-text);
 	}
 
-	.formula-box {
-		margin: 0.5rem 0;
-		padding: 0.5rem 0.75rem;
-		background: var(--color-bg, #ffffff);
-		border-radius: 4px;
-		font-size: 0.9rem;
-		border: 1px solid var(--color-border, #e5e7eb);
+	.metric-desc {
+		margin: 0;
+		font-size: 0.8rem;
+		color: var(--color-text-muted);
+		line-height: 1.45;
 	}
 
-	/* ── Panel titles ────────────────────── */
-	.panel-title {
-		font-size: 0.75rem;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--color-text-muted, #6b7280);
-		margin-top: 0.25rem;
-		font-weight: 600;
+	.mono {
+		font-family: var(--font-mono, monospace);
 	}
 
-	/* ── Stats row ───────────────────────── */
-	.stats-row {
+	/* ─── Progress bars ─── */
+	.progress-row {
 		display: grid;
-		grid-template-columns: repeat(4, 1fr);
+		grid-template-columns: 1fr 1fr;
+		gap: 0.6rem;
+	}
+
+	.progress-card {
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+	}
+
+	.progress-label {
+		display: flex;
+		justify-content: flex-start;
+	}
+
+	.progress-bar-track {
+		width: 100%;
+		height: 18px;
+		background: var(--color-bg-soft, #1e1e2e);
+		border-radius: 4px;
+		overflow: hidden;
+	}
+
+	.progress-bar-fill {
+		height: 100%;
+		background: var(--color-belief, #60a5fa);
+		border-radius: 4px;
+		transition: width 0.3s ease;
+		min-width: 1px;
+	}
+
+	.progress-bar-fill.adapt-fill {
+		background: var(--color-accent, #a78bfa);
+	}
+
+	.progress-values {
+		display: flex;
+		justify-content: space-between;
+		align-items: baseline;
+		font-size: 0.78rem;
+	}
+
+	.progress-values .value {
+		font-family: var(--font-mono, monospace);
+		font-weight: 700;
+		font-size: 0.9rem;
+		color: var(--color-text);
+	}
+
+	.progress-values .value.ok {
+		color: var(--color-positive);
+	}
+
+	.progress-values .value.low {
+		color: var(--color-surprise);
+	}
+
+	.progress-values .target {
+		color: var(--color-text-muted);
+	}
+
+	/* ─── Method tags ─── */
+	.method-tag {
+		display: inline-block;
+		font-size: 0.7rem;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		padding: 0.15rem 0.5rem;
+		border-radius: 4px;
+	}
+
+	.method-tag.const-tag {
+		background: color-mix(in srgb, var(--color-belief, #60a5fa) 15%, transparent);
+		color: var(--color-belief, #60a5fa);
+	}
+
+	.method-tag.adapt-tag {
+		background: color-mix(in srgb, var(--color-accent, #a78bfa) 15%, transparent);
+		color: var(--color-accent, #a78bfa);
+	}
+
+	/* ─── Scatter row ─── */
+	.scatter-row {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
 		gap: 0.5rem;
 	}
 
-	@media (max-width: 600px) {
-		.stats-row {
-			grid-template-columns: repeat(2, 1fr);
-		}
+	.mini-scatter {
+		width: 100%;
+		display: block;
 	}
 
-	.stat-card {
+	.cond-scatter {
+		width: 100%;
+		display: block;
+	}
+
+	/* ─── Bar row (metric 2) ─── */
+	.bar-row {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 0.6rem;
+	}
+
+	.bar-card {
 		display: flex;
 		flex-direction: column;
-		align-items: center;
-		padding: 0.5rem;
-		border-radius: 6px;
-		background: var(--color-surface-2, #f9fafb);
-		border: 1px solid var(--color-border, #e5e7eb);
+		gap: 0.35rem;
 	}
 
-	.stat-card.highlight {
-		border-color: #8b5cf6;
-		background: rgba(139, 92, 246, 0.06);
+	.bar-track {
+		width: 100%;
+		height: 22px;
+		background: var(--color-bg-soft, #1e1e2e);
+		border-radius: 4px;
+		overflow: hidden;
 	}
 
-	.stat-label {
-		font-size: 0.65rem;
+	.bar-fill {
+		height: 100%;
+		background: var(--color-belief, #60a5fa);
+		border-radius: 4px;
+		transition: width 0.3s ease;
+	}
+
+	.bar-fill.adapt-fill {
+		background: var(--color-accent, #a78bfa);
+	}
+
+	.bar-value {
+		font-family: var(--font-mono, monospace);
+		font-size: 0.85rem;
+		font-weight: 700;
+		color: var(--color-text);
+		text-align: right;
+	}
+
+	/* ─── Histogram row ─── */
+	.hist-row {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 0.5rem;
+	}
+
+	.histogram {
+		width: 100%;
+		display: block;
+	}
+
+	/* ─── Plot background ─── */
+	.plot-bg {
+		fill: var(--color-bg-soft, transparent);
+	}
+
+	/* ─── Summary table ─── */
+	.summary-section {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		padding: 0.8rem;
+		border-radius: var(--radius-md, 8px);
+		border: 1px solid var(--color-border);
+		background: var(--color-surface-2, transparent);
+		overflow-x: auto;
+	}
+
+	.summary-title {
+		margin: 0;
+		font-size: 0.92rem;
+		font-weight: 700;
+		color: var(--color-text);
+	}
+
+	.summary-table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 0.82rem;
+	}
+
+	.summary-table th {
+		text-align: left;
+		font-size: 0.68rem;
+		font-weight: 700;
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
-		color: var(--color-text-muted, #6b7280);
-		margin-bottom: 0.25rem;
-		text-align: center;
+		color: var(--color-text-muted);
+		padding: 0.4rem 0.5rem;
+		border-bottom: 1px solid var(--color-border);
 	}
 
-	.stat-value {
-		font-size: 1rem;
+	.summary-table td {
+		padding: 0.45rem 0.5rem;
+		border-bottom: 1px solid var(--color-border);
+		color: var(--color-text);
+	}
+
+	.summary-table tbody tr:last-child td {
+		border-bottom: none;
+	}
+
+	.method-cell {
+		white-space: nowrap;
+	}
+
+	.num-cell {
 		font-family: var(--font-mono, monospace);
-		font-weight: 700;
+		font-weight: 600;
+		text-align: right;
 	}
 
-	.stat-card.highlight .stat-value {
-		color: #8b5cf6;
+	.num-cell.ok {
+		color: var(--color-positive);
 	}
 
-	/* ── Slider group ────────────────────── */
+	.num-cell.low {
+		color: var(--color-surprise);
+	}
+
+	/* ─── Controls ─── */
 	.grp {
 		display: flex;
 		flex-direction: column;
@@ -441,18 +877,135 @@
 	}
 
 	.gttl {
-		font-size: 0.75rem;
+		font-size: 0.72rem;
+		font-weight: 700;
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--color-text-muted, #6b7280);
+		letter-spacing: 0.04em;
+		color: var(--color-text-muted);
 	}
 
-	/* ── Caption ─────────────────────────── */
+	.regen-wrap {
+		display: flex;
+		flex-direction: column;
+		gap: 0.3rem;
+	}
+
+	.regen-btn {
+		cursor: pointer;
+		padding: 0.45rem 0.9rem;
+		font-size: 0.82rem;
+		font-weight: 600;
+		color: var(--color-text);
+		background: var(--color-surface-2, transparent);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md, 8px);
+		transition: background 0.15s ease;
+	}
+
+	.regen-btn:hover {
+		background: var(--color-border);
+	}
+
+	.regen-hint {
+		font-size: 0.72rem;
+		color: var(--color-text-muted);
+		font-family: var(--font-mono, monospace);
+	}
+
+	.dataset-info {
+		display: flex;
+		gap: 0.8rem;
+		font-size: 0.72rem;
+		color: var(--color-text-muted);
+		font-family: var(--font-mono, monospace);
+	}
+
+	/* ─── Legend ─── */
+	.legend {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+		gap: 0.5rem;
+		padding: 0.6rem 0.8rem;
+		border-radius: var(--radius-md, 8px);
+		border: 1px solid var(--color-border);
+		background: var(--color-surface-2, transparent);
+	}
+
+	.legend-item {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		font-size: 0.78rem;
+		color: var(--color-text-muted);
+	}
+
+	.legend-swatch {
+		display: inline-block;
+		width: 12px;
+		height: 12px;
+		border-radius: 3px;
+		flex-shrink: 0;
+	}
+
+	.legend-const {
+		background: var(--color-belief, #60a5fa);
+	}
+
+	.legend-adapt {
+		background: var(--color-accent, #a78bfa);
+	}
+
+	.legend-covered {
+		background: var(--color-positive);
+	}
+
+	.legend-outlier {
+		background: var(--color-surprise);
+	}
+
+	.legend-text {
+		line-height: 1.2;
+	}
+
+	/* ─── Caption ─── */
 	.cap {
 		margin: 0;
-		font-size: 0.82rem;
-		line-height: 1.6;
-		color: var(--color-text-muted, #6b7280);
-		text-align: justify;
+		font-size: 0.8rem;
+		color: var(--color-text-muted);
+		line-height: 1.5;
+		padding: 0.4rem 0;
+	}
+
+	.cap strong {
+		color: var(--color-text);
+	}
+
+	/* ─── Responsive ─── */
+	@media (max-width: 760px) {
+		.progress-row,
+		.scatter-row,
+		.bar-row,
+		.hist-row {
+			grid-template-columns: 1fr;
+		}
+
+		.legend {
+			grid-template-columns: repeat(2, 1fr);
+		}
+
+		.summary-table {
+			font-size: 0.75rem;
+		}
+	}
+
+	@media (max-width: 480px) {
+		.legend {
+			grid-template-columns: 1fr 1fr;
+		}
+
+		.dataset-info {
+			flex-wrap: wrap;
+			gap: 0.4rem;
+		}
 	}
 </style>
