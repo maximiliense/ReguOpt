@@ -184,7 +184,7 @@
 
 <PageTemplate
 	title={meta?.title ?? "Conditions d'existence d'un minimum"}
-	subtitle="Optimisation"
+	subtitle=" Bases mathématiques de l'optimisation : optimalité, existence et convexité"
 	prev={prevMeta}
 	next={nextMeta}
 >

@@ -154,7 +154,7 @@
 
 <PageTemplate
 	title={meta?.title ?? 'Descente de gradient & accélération'}
-	subtitle="Partie I — Optimisation"
+	subtitle="Algorithmes de premier ordre : de la descente de gradient classique à l'accélération de Nesterov"
 	prev={prevMeta}
 	next={nextMeta}
 >

@@ -179,7 +179,7 @@
 
 <PageTemplate
 	title={meta?.title ?? "Fonctions d'optimisation en ML"}
-	subtitle="Partie I — Optimisation"
+	subtitle="Structure des fonctions de perte du Machine Learning et propriétés de régularité"
 	prev={prevMeta}
 	next={nextMeta}
 >

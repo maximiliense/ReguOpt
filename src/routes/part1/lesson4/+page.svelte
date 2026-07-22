@@ -129,7 +129,7 @@
 
 <PageTemplate
 	title={meta?.title ?? 'SGD, CD & Newton'}
-	subtitle="Partie I — Optimisation"
+	subtitle="Optimisation avancée : approches stochastiques, par coordonnées et méthodes du second ordre"
 	prev={prevMeta}
 	next={nextMeta}
 >
