@@ -165,7 +165,7 @@
 	// Ex 4.1
 	const sgd41batch =
 		'w^{(k+1)} = w^{(k)} - \\alpha \\cdot \\frac{1}{n}\\sum_{i=1}^n \\nabla f_i(w^{(k)})';
-	const sgd41stoch = "w^{(k+1)} = w^{(k)} - \\alpha \\',\\nabla f_{i_k}(w^{(k)})";
+	const sgd41stoch = 'w^{(k+1)} = w^{(k)} - \\alpha \\cdot\\nabla f_{i_k}(w^{(k)})';
 
 	// Ex 4.2
 	const batch42cost = '\\mathcal{O}(nd)';
@@ -651,11 +651,179 @@
 				et expliquez en quoi cela ne contredit pas le résultat de l'exercice 2.11.
 			</p>
 		</ExercisePanel>
+		<ExercisePanel number="1.21" title="Existence et étude de la perte Logistique : log(1 + e⁻ˣ)">
+			{#snippet solution()}
+				<p>
+					La fonction de perte logistique élémentaire est <KatexInline
+						formula={String.raw`f(x) = \log(1 + e^{-x})`}
+					/> définie sur <KatexInline formula={String.raw`\mathbb{R}`} />.
+				</p>
+				<p>
+					<strong>1. Dérivabilité et variations :</strong> Elle est infiniment différentiable. Sa
+					dérivée première est :
+					<KatexBlock
+						formula={String.raw`f'(x) = \frac{-e^{-x}}{1 + e^{-x}} = -\frac{1}{e^x + 1}`}
+					/>
+					Puisque <KatexInline formula={String.raw`e^x + 1 > 0`} /> pour tout <KatexInline
+						formula={String.raw`x \in \mathbb{R}`}
+					/>, on a <KatexInline formula={String.raw`f'(x) < 0`} />. La fonction est donc
+					<strong>strictement décroissante</strong>
+					sur <KatexInline formula={String.raw`\mathbb{R}`} />.
+				</p>
+				<p>
+					<strong>2. Recherche de point critique :</strong> Résoudre <KatexInline
+						formula={String.raw`f'(x) = 0 \iff -1 = 0`}
+					/>, ce qui est impossible. La fonction n'admet donc <strong>aucun point critique</strong>.
+				</p>
+				<p>
+					<strong>3. Existence d'un minimum :</strong> Comme <KatexInline formula={String.raw`f`} /> est
+					strictement décroissante et que <KatexInline
+						formula={String.raw`\lim_{x \to +\infty} f(x) = 0`}
+					/> par composition, l'infimum du problème est :
+					<KatexBlock formula={String.raw`\inf_{x \in \mathbb{R}} f(x) = 0`} />
+					Cependant, pour tout <KatexInline formula={String.raw`x \in \mathbb{R}`} />, <KatexInline
+						formula={String.raw`e^{-x} > 0 \implies 1 + e^{-x} > 1 \implies f(x) > 0`}
+					/>. L'infimum <KatexInline formula={String.raw`0`} /> n'est jamais atteint.
+					<strong>Il n'existe donc pas de minimum global</strong>. Cet exercice illustre l'absence
+					d'optimum due au caractère ouvert non borné du domaine dans la direction de décroissance
+					de la fonction.
+				</p>
+			{/snippet}
+			<p>
+				On considère la fonction <KatexInline formula={String.raw`f(x) = \log(1 + e^{-x})`} /> sur <KatexInline
+					formula={String.raw`\mathbb{R}`}
+				/>.
+			</p>
+			<ol>
+				<li>
+					Calculez sa dérivée première <KatexInline formula={String.raw`f'(x)`} /> et étudiez ses variations.
+				</li>
+				<li>Recherchez les points critiques de <KatexInline formula={String.raw`f`} />.</li>
+				<li>
+					Déterminez la valeur de <KatexInline
+						formula={String.raw`\inf_{x \in \mathbb{R}} f(x)`}
+					/>. Un minimum global existe-t-il ?
+				</li>
+			</ol>
+		</ExercisePanel>
+
+		<ExercisePanel number="1.22" title="Absence de minimum sur domaine fermé non borné : exp(−x)">
+			{#snippet solution()}
+				<p>
+					Soit la fonction <KatexInline formula={String.raw`f(x) = e^{-x}`} /> définie sur le domaine
+					fermé non borné <KatexInline formula={String.raw`\Omega = [0, +\infty)`} />.
+				</p>
+				<p>
+					<strong>1. Analyse des variations et point critique :</strong> La fonction est infiniment
+					différentiable. Sa dérivée <KatexInline formula={String.raw`f'(x) = -e^{-x}`} /> est strictement
+					négative pour tout <KatexInline formula={String.raw`x \ge 0`} />. La fonction est donc
+					<strong>strictement décroissante</strong>
+					et n'admet aucun point critique sur l'intérieur <KatexInline
+						formula={String.raw`(0, +\infty)`}
+					/>.
+				</p>
+				<p>
+					<strong>2. Analyse des bornes :</strong>
+					À la borne gauche du domaine, <KatexInline formula={String.raw`f(0) = 1`} />. Comme la
+					fonction est strictement décroissante, ce point représente le
+					<strong>maximum global</strong>
+					de la fonction sur <KatexInline formula={String.raw`\Omega`} />.
+				</p>
+				<p>
+					<strong>3. Non-existence du minimum global :</strong>
+					Lorsque <KatexInline formula={String.raw`x \to +\infty`} />, on a :
+					<KatexBlock formula={String.raw`\lim_{x \to +\infty} e^{-x} = 0`} />
+					La fonction n'est donc <strong>pas coercive</strong> (sa limite n'est pas <KatexInline
+						formula={String.raw`+\infty`}
+					/>). L'infimum de la fonction est <KatexInline
+						formula={String.raw`\inf_{x \ge 0} f(x) = 0`}
+					/>. Cependant, comme <KatexInline formula={String.raw`e^{-x} > 0`} /> pour tout <KatexInline
+						formula={String.raw`x \in \mathbb{R}`}
+					/>, il n'existe aucun réel <KatexInline formula={String.raw`x \in \Omega`} /> tel que <KatexInline
+						formula={String.raw`f(x) = 0`}
+					/>.
+				</p>
+				<p>
+					<strong>Conclusion :</strong> L'infimum n'est jamais atteint :
+					<strong>la fonction n'admet aucun minimum global</strong>. Cet exercice montre que la
+					fermeture du domaine (<KatexInline formula={String.raw`[0, +\infty)`} /> est bien fermé) ne
+					suffit pas à garantir l'existence d'un minimum si le domaine est non borné et que la fonction
+					n'est pas coercive.
+				</p>
+			{/snippet}
+			<p>
+				On considère la fonction <KatexInline formula={String.raw`f(x) = e^{-x}`} /> définie sur le domaine
+				fermé <KatexInline formula={String.raw`\Omega = [0, +\infty)`} />.
+			</p>
+			<ol>
+				<li>
+					Montrez que la fonction est strictement décroissante et déterminez la nature géométrique
+					du point <KatexInline formula={String.raw`x = 0`} />.
+				</li>
+				<li>
+					Calculez la limite de <KatexInline formula={String.raw`f`} /> en <KatexInline
+						formula={String.raw`+\infty`}
+					/>. La fonction est-elle coercive ?
+				</li>
+				<li>
+					Déterminez l'infimum de <KatexInline formula={String.raw`f`} /> sur <KatexInline
+						formula={String.raw`\Omega`}
+					/>. Un minimum global existe-t-il ? Justifiez.
+				</li>
+			</ol>
+		</ExercisePanel>
+
+		<ExercisePanel number="1.23" title="Existence et unicité par convexité : (1 − x)²">
+			{#snippet solution()}
+				<p>
+					Soit <KatexInline formula={String.raw`f(x) = (1 - x)^2`} /> définie sur <KatexInline
+						formula={String.raw`\mathbb{R}`}
+					/>.
+				</p>
+				<p>
+					<strong>1. Point critique (CNO) :</strong> On calcule sa dérivée et on cherche à l'annuler
+					:
+					<KatexBlock formula={String.raw`f'(x) = 2(x - 1) = 0 \iff x^* = 1`} />
+					Il existe un unique point critique au point <KatexInline formula={String.raw`x^* = 1`} />.
+				</p>
+				<p>
+					<strong>2. Analyse de la courbure (CNSO/CSSO) :</strong> Sa dérivée seconde est constante
+					:
+					<KatexBlock formula={String.raw`f''(x) = 2 > 0, \quad \forall x \in \mathbb{R}`} />
+					Comme la dérivée seconde est strictement positive sur tout <KatexInline
+						formula={String.raw`\mathbb{R}`}
+					/>, la fonction est <strong>strictement convexe</strong>.
+				</p>
+				<p>
+					<strong>3. Caractérisation de l'optimum :</strong> Tout point critique d'une fonction
+					convexe est un minimum global. Par stricte convexité, ce minimum est unique. On a :
+					<KatexBlock
+						formula={String.raw`x^* = 1 \quad \text{est l'unique minimum global de } f, \quad \text{avec } f(1) = 0`}
+					/>
+					La coercivité de <KatexInline formula={String.raw`f`} /> (<KatexInline
+						formula={String.raw`\lim_{|x| \to \infty} f(x) = +\infty`}
+					/>) garantit de surcroît l'existence a priori de cet optimum par le théorème de
+					Weierstrass généralisé.
+				</p>
+			{/snippet}
+			<p>
+				On étudie la fonction <KatexInline formula={String.raw`f(x) = (1 - x)^2`} /> sur <KatexInline
+					formula={String.raw`\mathbb{R}`}
+				/>.
+			</p>
+			<ol>
+				<li>
+					Déterminez l'unique point critique <KatexInline formula={String.raw`x^*`} /> de cette fonction.
+				</li>
+				<li>À l'aide de sa dérivée seconde, montrez que la fonction est strictement convexe.</li>
+				<li>Déduisez-en la nature géométrique de ce point critique. Le minimum est-il unique ?</li>
+			</ol>
+		</ExercisePanel>
 		<h2 id="fonctions-ml">Fonctions en ML</h2>
 
 		<p>
-			Cette section explore vingt exercices sur les propriétés des fonctions rencontrées en Machine
-			Learning : conservation de la convexité par somme et moyenne, calcul de gradients et
+			Cette section explore vingt-trois exercices sur les propriétés des fonctions rencontrées en
+			Machine Learning : conservation de la convexité par somme et moyenne, calcul de gradients et
 			Hessiennes, coercivité, et régularisation Ridge/Lasso. Chaque exercice est accompagné d'une
 			solution détaillée, accessible en cliquant sur « Voir la solution ».
 		</p>
@@ -821,7 +989,7 @@ g(\lambda x+(1-\lambda)y)
 		<ExercisePanel number="2.5" title="Composition affine">
 			<p>
 				Soit
-				<KatexInline formula={String.raw`g(t)=t^2`} />
+				<KatexInline formula={String.raw`g(t)=\|t\|_2^2`} />
 				et
 				<KatexInline formula={String.raw`A(x)=Mx+b`} />.
 			</p>
@@ -920,7 +1088,9 @@ g(\lambda x+(1-\lambda)y)
 		<ExercisePanel number="2.8" title="Convexité de la régression logistique">
 			<p>
 				On considère la perte logistique élémentaire
-				<KatexInline formula={String.raw`f_i(w)=\log\!\left(1+e^{-y_iw^\top x_i}\right)`} />.
+				<KatexInline formula={String.raw`f_i(w)=\log\!\left(1+e^{-y_iw^\top x_i}\right)`} /> où <KatexInline
+					formula={String.raw`y_i\in\{-1,+1\}`}
+				/> et <KatexInline formula={String.raw`x_i\in\mathbb{R}^d`} />.
 			</p>
 
 			<ol>
@@ -1718,15 +1888,43 @@ L_i.
 		<ExercisePanel number="3.3" title="Dérivée directionnelle et plus forte descente">
 			{#snippet solution()}
 				<p>
-					La dérivée directionnelle le long de <KatexInline formula={String.raw`d`} /> est donnée par
-					le produit scalaire <KatexInline formula={String.raw`\langle \nabla f(x), d \rangle`} />.
-					Par l'inégalité de Cauchy-Schwarz, ce produit scalaire est minimal lorsque <KatexInline
-						formula={String.raw`d`}
-					/> est colinéaire et de signe opposé à <KatexInline formula={String.raw`\nabla f(x)`} />.
-					Pour une direction unitaire (<KatexInline formula={String.raw`\|d\| = 1`} />), le choix
-					optimal est unique et vaut <KatexInline
-						formula={String.raw`d^* = -\frac{\nabla f(x)}{\|\nabla f(x)\|}`}
-					/>.
+					La dérivée directionnelle de <KatexInline formula="f" /> au point <KatexInline
+						formula="x"
+					/> dans la direction unitaire
+					<KatexInline formula={String.raw`d`} /> (avec <KatexInline
+						formula={String.raw`\|d\|_2 = 1`}
+					/>) est donnée par le produit scalaire :
+					<KatexBlock formula={String.raw`D_d f(x) = \langle \nabla f(x), d \rangle`} />
+				</p>
+				<p>
+					Par l'inégalité de <strong>Cauchy-Schwarz</strong>, pour tous vecteurs de <KatexInline
+						formula={String.raw`\mathbb{R}^d`}
+					/>, la valeur absolue de leur produit scalaire est majorée par le produit de leurs normes
+					:
+					<KatexBlock
+						formula={String.raw`\left| \langle \nabla f(x), d \rangle \right| \le \|\nabla f(x)\|_2 \cdot \|d\|_2`}
+					/>
+				</p>
+				<p>
+					Comme <KatexInline formula={String.raw`\|d\|_2 = 1`} />, cette inégalité se simplifie en <KatexInline
+						formula={String.raw`\left| \langle \nabla f(x), d \rangle \right| \le \|\nabla f(x)\|_2`}
+					/>, ce qui se traduit par l'encadrement suivant :
+					<KatexBlock
+						formula={String.raw`-\|\nabla f(x)\|_2 \le \langle \nabla f(x), d \rangle \le \|\nabla f(x)\|_2`}
+					/>
+				</p>
+				<p>
+					La dérivée directionnelle est donc minorée par <KatexInline
+						formula={String.raw`-\|\nabla f(x)\|_2`}
+					/>. Cette borne inférieure (qui minimise la pente de la fonction) est atteinte si et
+					seulement si l'inégalité de Cauchy-Schwarz devient une <strong>égalité stricte</strong> avec
+					un signe négatif.
+				</p>
+				<p>
+					Le cas d'égalité de Cauchy-Schwarz stipule que les deux vecteurs doivent être colinéaires.
+					Pour obtenir le signe négatif, ils doivent être de sens opposés. Ainsi, la direction
+					unitaire optimale de plus forte descente est unique et s'écrit :
+					<KatexBlock formula={String.raw`d^* = -\frac{\nabla f(x)}{\|\nabla f(x)\|_2}`} />
 				</p>
 			{/snippet}
 			<p>
@@ -1735,6 +1933,12 @@ L_i.
 				/> minimise la dérivée directionnelle parmi toutes les directions unitaires <KatexInline
 					formula={String.raw`\|d\| = 1`}
 				/>.
+			</p>
+			<p
+				class="exercise-hint"
+				style="font-size: 0.85rem; color: var(--color-text-muted); margin-top: 0.5rem;"
+			>
+				<em>Indice : Utilisez l'inégalité de Cauchy-Schwarz.</em>
 			</p>
 		</ExercisePanel>
 
@@ -1889,9 +2093,9 @@ L_i.
 				</p>
 			{/snippet}
 			<p>
-				Pour une fonction convexe et $L$-lisse, le taux de convergence de la descente de gradient
-				est en <KatexInline formula={String.raw`\mathcal{O}(1/k)`} />. Déterminez le nombre
-				d'itérations nécessaires, exprimé en fonction de <KatexInline
+				Pour une fonction convexe et <KatexInline formula="L" />-lisse, le taux de convergence de la
+				descente de gradient est en <KatexInline formula={String.raw`\mathcal{O}(1/k)`} />.
+				Déterminez le nombre d'itérations nécessaires, exprimé en fonction de <KatexInline
 					formula={String.raw`\epsilon`}
 				/>, pour garantir que l'erreur <KatexInline formula={String.raw`f(x^{(k)}) - f(x^*)`} /> soit
 				inférieure à un seuil de tolérance <KatexInline formula={String.raw`\epsilon`} />.
@@ -1919,8 +2123,8 @@ L_i.
 				</p>
 			{/snippet}
 			<p>
-				Si une fonction est de surcroît $\mu$-fortement convexe, son taux de convergence devient
-				linéaire (au sens de l'analyse numérique), c'est-à-dire en <KatexInline
+				Si une fonction est de surcroît <KatexInline formula="\mu" />-fortement convexe, son taux de
+				convergence devient linéaire (au sens de l'analyse numérique), c'est-à-dire en <KatexInline
 					formula={String.raw`\mathcal{O}(e^{-k \mu / L})`}
 				/>. Expliquez l'avantage de ce taux par rapport au cas purement convexe lors de la recherche
 				d'une précision extrêmement fine.
@@ -1942,10 +2146,12 @@ L_i.
 				</p>
 			{/snippet}
 			<p>
-				En optimisation quadratique, si une fonction possède un gradient $L$-Lipschitzien et est
-				$\mu$-fortement convexe, rappelez l'expression du pas constant optimal <KatexInline
-					formula={String.raw`\alpha^*`}
-				/> qui minimise le facteur de contraction de l'erreur à chaque itération.
+				En optimisation quadratique, si une fonction possède un gradient <KatexInline
+					formula="L"
+				/>-Lipschitzien et est
+				<KatexInline formula="\mu" />-fortement convexe, rappelez l'expression du pas constant
+				optimal <KatexInline formula={String.raw`\alpha^*`} /> qui minimise le facteur de contraction
+				de l'erreur à chaque itération.
 			</p>
 		</ExercisePanel>
 
@@ -2074,12 +2280,11 @@ L_i.
 			{/snippet}
 			<p>
 				Soit <KatexInline formula={String.raw`f(x) = 5x^2`} />, dont le gradient est
-				$10$-Lipschitzien (<KatexInline formula={String.raw`L=10`} />). Si l'on choisit un pas
-				inadéquat <KatexInline formula={String.raw`\alpha = 0.3`} /> (supérieur à <KatexInline
-					formula={String.raw`2/L`}
-				/>), calculez explicitement les premiers itérés à partir de <KatexInline
-					formula={String.raw`x^{(0)} = 1`}
-				/> et décrivez le comportement asymptotique obtenu.
+				<KatexInline formula="10" />-Lipschitzien (<KatexInline formula={String.raw`L=10`} />). Si
+				l'on choisit un pas inadéquat <KatexInline formula={String.raw`\alpha = 0.3`} /> (supérieur à
+				<KatexInline formula={String.raw`2/L`} />), calculez explicitement les premiers itérés à
+				partir de <KatexInline formula={String.raw`x^{(0)} = 1`} /> et décrivez le comportement asymptotique
+				obtenu.
 			</p>
 		</ExercisePanel>
 
@@ -2372,8 +2577,8 @@ d^* = -A^{-1}\, A(x-x^*) = -(x-x^*).
 					formula={String.raw`
 \frac{\partial}{\partial d}\big(f(x) + \nabla f(x)^\top d + \tfrac12 d^{\!\top}H_f d\big)
 = \nabla f(x) + H_f d = 0
-\\Rightarrow
-d^* = -[H_f]^{-1}\,\nabla f(x).`}
+\Rightarrow
+ d^* = -[H_f]^{-1}\,\nabla f(x).`}
 				/>
 				<p>
 					Cette direction <KatexInline formula="d^*" /> est exactement celle qui annule le gradient du
@@ -2515,7 +2720,7 @@ d^* = -[H_f]^{-1}\,\nabla f(x).`}
 				<KatexBlock
 					formula={String.raw`
 \min_d \; f(x) + \nabla f(x)^\top d + \tfrac12 d^{\!\top}H_f d
-\\quad \text{s.c.}\ \|d\| \leq \Delta_k.`}
+\quad \text{s.c.}\ \|d\| \leq \Delta_k.`}
 				/>
 				<p>
 					Si le pas de Newton non contraint satisfait la contrainte, on l'utilise tel quel

@@ -67,7 +67,6 @@
 	const AtA = matMul(At, A);
 	const eigA = eig2(A);
 	const condA = eigA[0] / eigA[1];
-	const eigAtA0 = eig2(AtA); // baseline condition number of AtA at lambda = 0
 
 	// ─── Interactive state ──────────────────────────────────────
 	let noiseScale = $state(1); // 0..2 ; 1 = exactly the real y_round - y perturbation
